@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Member {
+  id        String  @id @default(uuid())
+  crewId    String?
+  crew      Crew?   @relation(fields: [crewId], references: [id])
+  firstName String
+  lastName  String
+  email     String  @unique
+  password  String
+  rank      String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
+
+  isDriver  Boolean @default(false)
+  isOfficer Boolean @default(false)
+
+  assignments        ShiftAssignment[] @relation("AssignedMember")
+  coveredAssignments ShiftAssignment[] @relation("CoveringMember")
+
+  requests StandInRequest[] @relation("RequestedBy")
+  covers   StandInRequest[] @relation("CoveredBy")
+
+  responsesMade     StandInResponse[] @relation("RespondedBy")
+  responsesCovering StandInResponse[] @relation("CoveringBy")
+}
+
+model Crew {
+  id        String   @id @default(uuid())
+  watchName String
+  crewOrder Int
+  members   Member[]
+}
+
+model ShiftSlot {
+  id           String   @id @default(uuid())
+  date         DateTime
+  appliance    String
+  roleRequired String
+  isWeekend    Boolean  @default(false)
+
+  assignments ShiftAssignment[]
+  requests    StandInRequest[]
+}
+
+model ShiftAssignment {
+  id     String    @id @default(uuid())
+  slotId String
+  slot   ShiftSlot @relation(fields: [slotId], references: [id])
+
+  applianceRole String // OIC, Driver, FF1, FF2, FF3
+
+  memberId String
+  member   Member @relation("AssignedMember", fields: [memberId], references: [id])
+
+  actualMemberId String?
+  actualMember   Member? @relation("CoveringMember", fields: [actualMemberId], references: [id])
+
+  startTime DateTime
+  endTime   DateTime
+
+  historicalRank      String
+  historicalWatchName String?
+}
+
+model StandInRequest {
+  id     String    @id @default(uuid())
+  slotId String
+  slot   ShiftSlot @relation(fields: [slotId], references: [id])
+
+  requestedById String
+  requestedBy   Member @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  coveredById String?
+  coveredBy   Member? @relation("CoveredBy", fields: [coveredById], references: [id])
+
+  startTime DateTime
+  endTime   DateTime
+
+  requestType String // StandIn, Sick, Holiday
+  status      String @default("PENDING") // PENDING, APPROVED, REJECTED
+
+  responses StandInResponse[]
+}
+
+model StandInResponse {
+  id String @id @default(uuid())
+
+  requestId String
+  request   StandInRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  respondedById String
+  respondedBy   Member @relation("RespondedBy", fields: [respondedById], references: [id])
+
+  coveringById String?
+  coveringBy   Member? @relation("CoveringBy", fields: [coveringById], references: [id])
+
+  startTime DateTime
+  endTime   DateTime
+
+  status String @default("PENDING") // PENDING, APPROVED, REJECTED
+}

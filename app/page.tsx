@@ -1,65 +1,149 @@
-import Image from "next/image";
+import { db } from '../lib/db'
+import RosterGrid from '@/components/roster/RosterGrid'
+import Link from 'next/link'
+import RequestsBoard from '@/components/roster/RequestsBoard'
+import UserSelector from '@/components/roster/UserSelector'
 
-export default function Home() {
+interface PageProps {
+  searchParams: Promise<{ date?: string; user?: string }>
+}
+
+export default async function HomePage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const targetDateStr = params.date;
+
+  let anchorDate = new Date();
+  if (targetDateStr) {
+    const parsed = new Date(targetDateStr);
+    if (!isNaN(parsed.getTime())) {
+      anchorDate = parsed;
+    }
+  }
+  anchorDate.setHours(0, 0, 0, 0);
+
+  const visibleDates: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(anchorDate);
+    d.setDate(anchorDate.getDate() + i);
+    visibleDates.push(d);
+  }
+
+  const startDate = new Date(visibleDates[0]);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(visibleDates[6]);
+  endDate.setHours(23, 59, 59, 999);
+
+  const prevDate = new Date(anchorDate);
+  prevDate.setDate(anchorDate.getDate() - 6);
+
+  const nextDate = new Date(anchorDate);
+  nextDate.setDate(anchorDate.getDate() + 8);
+
+  const userQuery = params.user ? `&user=${params.user}` : '';
+  const prevLink = `/?date=${prevDate.toISOString().split('T')[0]}${userQuery}`;
+  const nextLink = `/?date=${nextDate.toISOString().split('T')[0]}${userQuery}`;
+
+  const activeSlots = await db.shiftSlot.findMany({
+    where: {
+      date: { gte: startDate, lte: endDate }
+    },
+    include: {
+      requests: true,
+      assignments: {
+        include: {
+          member: true,
+          actualMember: true,
+        },
+        orderBy: { startTime: 'asc' },
+      },
+    },
+    orderBy: { date: 'asc' },
+  });
+
+  const groupedData: Record<string, any[]> = {};
+  activeSlots.forEach((slot) => {
+    const slotDateObj = new Date(slot.date);
+    const dateKey = `${slotDateObj.getFullYear()}-${String(slotDateObj.getMonth() + 1).padStart(2, '0')}-${String(slotDateObj.getDate()).padStart(2, '0')}`;
+
+    if (!groupedData[dateKey]) {
+      groupedData[dateKey] = [];
+    }
+    groupedData[dateKey].push(slot);
+  });
+
+  const standInRequests = await db.standInRequest.findMany({
+    where: {
+      slot: {
+        date: { gte: startDate, lte: endDate }
+      }
+    },
+    include: {
+      slot: true,
+      requestedBy: true,
+      coveredBy: true,
+    },
+    orderBy: { startTime: 'asc' }
+  });
+
+  const allMembers = await db.member.findMany({
+    orderBy: { lastName: 'asc' }
+  });
+
+  const activeUserId = params.user || allMembers[0]?.id || '';
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Navigation Toolbar Header */}
+        <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <UserSelector members={allMembers} activeUserId={activeUserId} />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
+              <p className="text-xs text-slate-400 font-medium">Active Environment Container Node</p>
+            </div>
+          </div>
+
+          {/* Date Navigation Controls */}
+          <div className="flex items-center gap-2 self-start md:self-center">
+            <Link
+              href={prevLink}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+            >
+              ← 7 Days
+            </Link>
+            <span className="text-xs text-slate-400 font-mono font-medium px-2 hidden sm:inline">
+              {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+            <Link
+              href={nextLink}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+            >
+              7 Days →
+            </Link>
+          </div>
+        </header>
+
+        {/* Unified Roster Matrix Grid */}
+        <section className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Operational Roster</h2>
+            <span className="text-xs text-slate-400 font-mono">
+              Window: {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          </div>
+          <RosterGrid groupedData={groupedData} visibleDates={visibleDates} activeUserId={activeUserId} />
+        </section>
+
+        {/* Interactive Stand In Request Board */}
+        <RequestsBoard
+          requests={standInRequests}
+          activeUserId={activeUserId}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+      </div>
+    </main>
   );
 }
