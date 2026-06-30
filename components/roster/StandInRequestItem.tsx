@@ -1,14 +1,17 @@
 'use client'
 
 import { useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { acceptStandInRequest } from '@/app/actions/rosterActions'
 
 interface StandInRequestItemProps {
   request: any
   activeUserId: string
+  isMobile?: boolean
 }
 
-export default function StandInRequestItem({ request, activeUserId }: StandInRequestItemProps) {
+export default function StandInRequestItem({ request, activeUserId, isMobile = false }: StandInRequestItemProps) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
   const defaultStart = new Date(request.startTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false })
@@ -20,17 +23,19 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
     const startStr = formData.get('coverStart') as string
     const endStr = formData.get('coverEnd') as string
 
+    /* 
     if (startStr === endStr) {
       alert("Please select a valid time range. Start and end times cannot be identical.")
       return
     }
-
+    */
     startTransition(async () => {
       await acceptStandInRequest(request.id, activeUserId, startStr, endStr)
+      router.refresh()
     })
   }
 
-  const isOwnRequest = activeUserId === request.requestedById;
+  const isOwnRequest = activeUserId === request.requestedById
 
   return (
     <div className="p-4 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs border-b last:border-b-0">
@@ -47,7 +52,7 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
           Shift Date: {new Date(request.slot.date).toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' })}
         </p>
         <p className="text-slate-400 font-mono text-[10px] mt-0.5">
-          Requested Hours: {defaultStart} - {defaultEnd}
+          Requested Hours: {defaultStart} – {defaultEnd}
         </p>
       </div>
 
@@ -57,9 +62,9 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
             <span className="text-[10px] font-semibold text-slate-500">Fulfill From:</span>
             <input
               name="coverStart"
-              type="text"
+              type={isMobile ? "time" : "text"}
               defaultValue={defaultStart}
-              className="w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'}`}
             />
           </div>
 
@@ -67,16 +72,20 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
             <span className="text-[10px] font-semibold text-slate-500">Fulfill Until:</span>
             <input
               name="coverEnd"
-              type="text"
+              type={isMobile ? "time" : "text"}
               defaultValue={defaultEnd}
-              className="w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'}`}
             />
           </div>
 
           <button
             type="submit"
             disabled={isPending}
-            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+            className={`px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400
+              ${isOwnRequest
+                ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                : 'bg-amber-500 hover:bg-amber-600 text-white'}
+              ${isMobile ? 'py-2.5 w-full mt-1' : 'py-1.5'}`}
           >
             {isPending ? 'Processing...' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
           </button>
@@ -89,3 +98,4 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
     </div>
   )
 }
+

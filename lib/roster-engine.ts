@@ -54,7 +54,6 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
         return null
       }
 
-      // src/lib/roster-engine.ts Additions inside assignTruckLineup
       const lineup = [
         { role: 'OIC', member: extract(m => m.isOfficer) || extract(() => true) },
         { role: 'Driver', member: extract(m => m.isDriver) || extract(() => true) },

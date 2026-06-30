@@ -45,3 +45,5 @@ next-env.d.ts
 
 lib/db.ts
 sillyrefs/cmdcheatsheet.md
+
+prisma/seed.ts

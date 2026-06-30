@@ -25,7 +25,6 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         const assignmentStart = new Date(assignment.startTime).getTime()
         const assignmentEnd = new Date(assignment.endTime).getTime()
 
-        // Match if an open pending request directly spans over this block slice's timeline window
         const isRequested = slotRequests.some(r => {
           if (r.requestedById !== assignment.memberId || r.status !== 'PENDING') return false
           const reqStart = new Date(r.startTime).getTime()
@@ -33,22 +32,18 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
           return reqStart < assignmentEnd && reqEnd > assignmentStart
         })
 
-        // Determine who is actively filling this specific timeline segment block
         const activeMember = isCovered ? assignment.actualMember : assignment.member;
         const nameFormatted = `${activeMember.lastName}, ${activeMember.firstName.charAt(0)}.`;
 
         const startStr = new Date(assignment.startTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false });
         const endStr = new Date(assignment.endTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-        // Apply dynamic theme rules based on assignment status
         let cellStyles = "bg-white text-slate-800 border-slate-200"
         if (isRequested) {
           cellStyles = "bg-yellow-100 text-yellow-900 border-yellow-300 font-medium animate-pulse-subtle"
         } else if (isCovered) {
           cellStyles = "bg-blue-100 text-blue-900 border-blue-300 font-bold"
         }
-
-        // Color highlight current active user context
         if (activeMember.id === activeUserId && !isPending && !isRequested) {
           cellStyles = "bg-green-200 text-green-900 border-green-300 font-medium"
         }
@@ -92,10 +87,12 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                         const [sh, sm] = s.split(':').map(Number)
                         targetStart.setHours(sh, sm, 0, 0)
 
-                        const targetEnd = new Date(assignment.endTime)
+                        const targetEnd = new Date(assignment.startTime)
                         const [eh, em] = ed.split(':').map(Number)
-                        if (eh < sh) targetEnd.setDate(targetEnd.getDate() + 1)
                         targetEnd.setHours(eh, em, 0, 0)
+                        if (targetEnd.getTime() <= targetStart.getTime()) {
+                          targetEnd.setDate(targetEnd.getDate() + 1)
+                        }
 
                         await createStandInRequest(assignment.id, assignment.memberId, targetStart, targetEnd)
                         setShowTimePicker(null)
@@ -129,12 +126,6 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const formData = new FormData(e.currentTarget)
                       const startStrInput = formData.get('coverStart') as string
                       const endStrInput = formData.get('coverEnd') as string
-
-                      if (startStrInput === endStrInput) {
-                        alert("Error: Cover window cannot have a length of zero.")
-                        return;
-                      }
-
                       startTransition(async () => {
                         await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
                         setShowTimePicker(null)
@@ -168,12 +159,6 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const formData = new FormData(e.currentTarget)
                       const startStrInput = formData.get('coverStart') as string
                       const endStrInput = formData.get('coverEnd') as string
-
-                      if (startStrInput === endStrInput) {
-                        alert("Error: Cover window cannot have a length of zero.")
-                        return;
-                      }
-
                       startTransition(async () => {
                         await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
                         setShowTimePicker(null)

@@ -1,14 +1,7 @@
 'use server'
-/**
- * FIX:
- * The 7-7 issue still happens randomly This is rosterActions issue I think.
-*/
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 
-/**
- * Creates a cover request for a specific shift assignment
- */
 export async function createStandInRequest(
   assignmentId: string,
   requestedById: string,
@@ -48,19 +41,25 @@ export async function acceptStandInRequest(
 
   if (!request) throw new Error("Target stand-in request token not found")
 
-  if (selectedStartStr === selectedEndStr) {
-    throw new Error("Start time and end time cannot be identical.");
-  }
-
   const [shours, smin] = selectedStartStr.split(':').map(Number)
   const [ehours, emin] = selectedEndStr.split(':').map(Number)
 
   const coverStart = new Date(request.startTime)
   coverStart.setHours(shours, smin, 0, 0)
 
-  const coverEnd = new Date(request.endTime)
+  // BUG FIX 1: was `new Date(request.endTime)` which put coverEnd on the NEXT
+  // day already (for overnight shifts), then setHours pushed it even further.
+  // e.g. cover 20:00-23:00 on a 17:30→07:00 shift produced a 27h window.
+  // Fix: always base coverEnd on the same calendar date as coverStart.
+  const coverEnd = new Date(request.startTime)
   coverEnd.setHours(ehours, emin, 0, 0)
-  if (ehours < shours || (ehours === shours && emin < smin)) {
+
+  // BUG FIX 2: the old check `if (ehours < shours)` failed for 07:00→07:00
+  // (equal hours, not less-than) so weekend shifts were never adjusted.
+  // Fix: compare actual timestamps — if end is not after start, add a day.
+  // This correctly handles 07:00→07:00 (adds a day → 24h cover) and
+  // 20:00→07:00 (adds a day → 11h cover), while leaving 17:30→23:00 alone.
+  if (coverEnd.getTime() <= coverStart.getTime()) {
     coverEnd.setDate(coverEnd.getDate() + 1)
   }
 

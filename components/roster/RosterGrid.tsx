@@ -18,7 +18,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId }: 
       <table className="w-full min-w-[950px] table-fixed border-collapse">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
-            <th className="p-3 text-left w-36 border-r">Appliance & Role</th>
+            <th className="p-3 text-left w-15 border-r">Seat</th>
             {visibleDates.map((date) => {
               const dayStr = date.toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' });
               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -45,8 +45,8 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId }: 
                 <tr key={`${appliance}-${role}`} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
                     <div className="flex flex-col">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{appliance}</span>
                       <span className="text-slate-700 font-semibold">{role}</span>
+                      <span className="text-[9px] block h-3"></span>
                     </div>
                   </td>
                   {visibleDates.map((date) => {
