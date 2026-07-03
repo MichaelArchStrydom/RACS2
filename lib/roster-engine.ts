@@ -2,7 +2,17 @@ import { db } from './db'
 
 export async function generateRosterForDateRange(startDate: Date, daysToGenerate: number) {
   const crews = await db.crew.findMany({
-    include: { members: true },
+    include: {
+      members: {
+        include: {
+          qualifications: {
+            include: {
+              qualification: true
+            }
+          }
+        }
+      }
+    },
     orderBy: { crewOrder: 'asc' }
   })
 

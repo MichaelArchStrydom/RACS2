@@ -15,7 +15,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId }: 
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-      <table className="w-full min-w-[950px] table-fixed border-collapse">
+      <table className="w-full min-w-327.5 table-fixed border-collapse">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
             <th className="p-3 text-left w-15 border-r">Seat</th>
@@ -59,7 +59,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId }: 
                     const slotRequests = matchingSlot?.requests || [];
 
                     return (
-                      <td key={dateKey} className="p-1 border-r align-top min-w-[140px]">
+                      <td key={dateKey} className="p-1 border-r align-top min-w-35">
                         {roleAssignments.length > 0 ? (
                           <RosterCell
                             assignments={roleAssignments}
