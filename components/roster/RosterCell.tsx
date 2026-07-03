@@ -3,6 +3,10 @@
 import { createStandInRequest, acceptStandInRequest } from '@/app/actions/rosterActions'
 import { useTransition, useState } from 'react'
 
+/*FIX:
+ *On login active user is not correctly highlighted until active user is changed, then it works properly.
+ */
+
 interface RosterCellProps {
   assignments: any[];
   slotRequests: any[];

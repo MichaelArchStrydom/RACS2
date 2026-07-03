@@ -54,9 +54,9 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
         return null
       }
 
-      const lineup = [
-        { role: 'OIC', member: extract(m => m.isOfficer) || extract(() => true) },
-        { role: 'Driver', member: extract(m => m.isDriver) || extract(() => true) },
+      const lineup = [// REMOVED ISDRIVER AND isOfficer FROM HERE TO RELY ON SCALABLE QUALIFICATIONS
+        { role: 'OIC', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')) || extract(() => true) },
+        { role: 'Driver', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')) || extract(() => true) },
         { role: 'FF1', member: extract(() => true) },
         { role: 'FF2', member: extract(() => true) },
         { role: 'FF3', member: extract(() => true) } // <-- ADD THIS SEAT

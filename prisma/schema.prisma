@@ -1,7 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// RACS2 Prisma Schema
 
 datasource db {
   provider = "postgresql"
@@ -11,36 +8,126 @@ generator client {
   provider = "prisma-client-js"
 }
 
+//MEMBER
 model Member {
-  id        String  @id @default(uuid())
-  crewId    String?
-  crew      Crew?   @relation(fields: [crewId], references: [id])
+  id     String  @id @default(uuid())
+  crewId String?
+  crew   Crew?   @relation(fields: [crewId], references: [id])
+
   firstName String
   lastName  String
-  email     String  @unique
+  email     String @unique
   password  String
   rank      String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
 
+  // qualification booleans kept for backward compat
+  // DONE REMOVED FROM ROSTER ENGINE BUT LEFT IN SCHEMA FOR NOW
   isDriver  Boolean @default(false)
   isOfficer Boolean @default(false)
 
+  // NEW: admin and status fields
+  isAdmin  Boolean @default(false)
+  isActive Boolean @default(true)
+
+  // Zone type controls automatic cover-request generation by the roster engine:
+  //   GREEN      = normal member, rostered on both appliances
+  //   RED        = restricted; their 2nd Due slot auto-generates a cover request
+  //   SUBSTITUTE = visiting member from another brigade, temporary
+  zoneType String @default("GREEN")
+
+  // NEW: hour tracking 
+  // expectedHoursPerPeriod: null means "use system default from SystemConfig".
+  // Overriding per-member lets you set different expectations for part-timers.
+  expectedHoursPerPeriod Float?
+
+  // hourBalance: running ledger balance.
+  //   positive = member has covered more than they've had covered (credit)
+  //   negative = member has had more covered than they've contributed (debt)
+  // This is the running total. Full history lives in HourLedgerEntry.
+  hourBalance Float @default(0)
+
+  //Relations 
   assignments        ShiftAssignment[] @relation("AssignedMember")
   coveredAssignments ShiftAssignment[] @relation("CoveringMember")
+  requests           StandInRequest[]  @relation("RequestedBy")
+  covers             StandInRequest[]  @relation("CoveredBy")
+  responsesMade      StandInResponse[] @relation("RespondedBy")
+  responsesCovering  StandInResponse[] @relation("CoveringBy")
 
-  requests StandInRequest[] @relation("RequestedBy")
-  covers   StandInRequest[] @relation("CoveredBy")
-
-  responsesMade     StandInResponse[] @relation("RespondedBy")
-  responsesCovering StandInResponse[] @relation("CoveringBy")
+  qualifications MemberQualification[]
+  leaveRecords   MemberLeave[]
+  hourLedger     HourLedgerEntry[]
 }
 
+// CREW
 model Crew {
   id        String   @id @default(uuid())
   watchName String
-  crewOrder Int
+  crewOrder Int // determines rotation order in the roster engine
+  isActive  Boolean  @default(true) // NEW: soft-delete crews without breaking history
   members   Member[]
 }
 
+// QUALIFICATIONS
+// The roster engine will eventually read these instead of isDriver/isOfficer.
+model Qualification {
+  id String @id @default(uuid())
+
+  // Machine key used in code. Never change a key after creation; add new ones.
+  key String @unique
+  // Examples: DRIVER, OFFICER, BA_TELEMETRY, PUMP_OP, ERD, SO_QUALIFIED,
+  //           APPLIANCE_READY, OSU_CREW, OSU_DRIVER, TANKER_DRIVER, TANKER_CREW
+
+  name        String // Human display name, freely editable
+  description String? // Optional notes for the admin UI
+
+  // If true, the roster engine considers this qual when assigning seats.
+  // If false, it is tracked for records only (e.g. BA Telemetry for admin info).
+  affectsRostering Boolean @default(false)
+
+  // Which applianceRole seats this qual enables.
+  // Stored as a string array: ["OIC", "Driver"] etc.
+  // Empty array = no seat restriction (member can fill any seat they're assigned).
+  enabledRoles String[]
+
+  isActive Boolean @default(true) // soft-delete
+
+  members MemberQualification[]
+}
+
+model MemberQualification {
+  id              String        @id @default(uuid())
+  memberId        String
+  member          Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  qualificationId String
+  qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Cascade)
+
+  awardedAt DateTime  @default(now())
+  expiresAt DateTime? // null = never expires
+
+  // Soft-disable without deleting record history
+  isActive Boolean @default(true)
+  notes    String?
+
+  @@unique([memberId, qualificationId])
+}
+
+// APPLIANCE
+// Currently ShiftSlot.appliance is a plain string ("1st Due", "2nd Due").
+// This model lets admins manage appliances from the UI.
+// PHASE 2: add applianceId FK to ShiftSlot and migrate the string data.
+// For now, name must exactly match the strings used in the roster engine.
+model Appliance {
+  id           String  @id @default(uuid())
+  name         String  @unique // must match ShiftSlot.appliance string value
+  displayOrder Int
+  seatCount    Int     @default(5) // total seats on this appliance
+  minimumCrew  Int     @default(3) // below this = short-crewed warning
+  isActive     Boolean @default(true)
+  notes        String?
+}
+
+//  SHIFT SLOT 
 model ShiftSlot {
   id           String   @id @default(uuid())
   date         DateTime
@@ -48,10 +135,28 @@ model ShiftSlot {
   roleRequired String
   isWeekend    Boolean  @default(false)
 
+  // NEW: status lets the roster engine generate DRAFT slots that are invisible
+  // to regular users until an admin publishes them.
+  // LIVE    = visible to everyone, the authoritative roster
+  // DRAFT   = only visible to admins in preview mode
+  // CANCELLED = shift was cancelled (e.g. appliance out of service)
+  status String @default("LIVE")
+
+  // NEW: links a draft slot back to the change set that created it.
+  // Null for all live slots.
+  draftChangeSetId String?
+  draftChangeSet   RosterChangeSet? @relation(fields: [draftChangeSetId], references: [id])
+
+  // NEW: if this date falls on a public holiday, store the reference.
+  publicHolidayId String?
+  publicHoliday   PublicHoliday? @relation(fields: [publicHolidayId], references: [id])
+
   assignments ShiftAssignment[]
   requests    StandInRequest[]
 }
 
+//  SHIFT ASSIGNMENT
+// Unchanged structurally — the app works with this as-is.
 model ShiftAssignment {
   id     String    @id @default(uuid())
   slotId String
@@ -72,6 +177,8 @@ model ShiftAssignment {
   historicalWatchName String?
 }
 
+//  STAND-IN REQUEST 
+// Unchanged structurally.
 model StandInRequest {
   id     String    @id @default(uuid())
   slotId String
@@ -86,12 +193,13 @@ model StandInRequest {
   startTime DateTime
   endTime   DateTime
 
-  requestType String // StandIn, Sick, Holiday
-  status      String @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestType String // COVER, SICK, HOLIDAY — was mixed-case before, standardise to UPPER
+  status      String @default("PENDING") // PENDING, COMPLETED, CANCELLED
 
   responses StandInResponse[]
 }
 
+//  STAND-IN RESPONSE
 model StandInResponse {
   id String @id @default(uuid())
 
@@ -108,4 +216,132 @@ model StandInResponse {
   endTime   DateTime
 
   status String @default("PENDING") // PENDING, APPROVED, REJECTED
+}
+
+// PUBLIC HOLIDAYS
+model PublicHoliday {
+  id   String   @id @default(uuid())
+  date DateTime
+  name String // "Waitangi Day", "ANZAC Day", etc.
+
+  // How the roster engine should treat this date.
+  // WEEKEND = same rules as a weekend shift (07:00–07:00, full day)
+  // WEEKDAY = treat as a normal weekday (shouldn't usually happen)
+  // SPECIAL = custom rules defined in notes / handled manually
+  shiftType String  @default("WEEKEND")
+  notes     String?
+
+  slots ShiftSlot[]
+}
+
+// MEMBER LEAVE 
+// Tracks approved/pending leave separately from cover requests.
+// When leave is APPROVED the roster engine (or admin) should create
+// COVER-type StandInRequests for the affected shifts automatically.
+model MemberLeave {
+  id       String @id @default(uuid())
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  startDate DateTime
+  endDate   DateTime
+  leaveType String // ANNUAL, SICK, UNPAID, SPECIAL, OTHER
+
+  // PENDING  = submitted, waiting for admin action
+  // APPROVED = admin approved, cover requests should be generated
+  // REJECTED = admin rejected
+  // CANCELLED = member withdrew or admin cancelled
+  status String @default("PENDING")
+
+  notes      String?
+  adminNotes String? // admin-only notes about the decision
+
+  // Store the approving admin's ID as a plain string to avoid circular FK mess.
+  // Lookup the member name separately if needed.
+  approvedById String?
+  approvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// HOUR LEDGER
+// Every time a member gives or receives hours, an entry is written here.
+// Member.hourBalance is the running sum — this table is the full audit trail.
+model HourLedgerEntry {
+  id       String @id @default(uuid())
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  // Positive = member gave hours (covered someone, or worked a scheduled shift)
+  // Negative = member received hours (had their shift covered, or took leave)
+  hoursChange Float
+
+  // Why this entry was created
+  reason String
+  // Suggested values: SHIFT_WORKED, SHIFT_COVERED_OUTGOING, SHIFT_COVERED_INCOMING,
+  //                   LEAVE_APPROVED, MANUAL_ADJUSTMENT
+
+  notes String? // free text for manual adjustments
+
+  // Optional back-references (store IDs as plain strings; don't FK to keep
+  // this table append-only even if the source record is later deleted)
+  relatedAssignmentId String?
+  relatedRequestId    String?
+
+  recordedAt DateTime @default(now())
+}
+
+// ROSTER CHANGE SET
+// Represents a set of admin-queued changes to the roster, crew structure,
+// or member assignments that have an effective date and a preview mode.
+//
+// DRAFT     = admin is building it; invisible to everyone else
+// SCHEDULED = approved and will go live automatically at effectiveFrom
+// LIVE      = currently active
+// ARCHIVED  = past its effectiveTo date or manually ended
+// CANCELLED = discarded without going live
+//
+// changeData is typed JSON — its shape depends on changeType:
+//   CREW_RESTRUCTURE: { crews: [...] }
+//   MEMBER_MOVE:      { memberId, fromCrewId, toCrewId, reason }
+//   APPLIANCE_CHANGE: { applianceId, field, oldValue, newValue }
+//   ROSTER_DRAFT:     links to ShiftSlot records via draftChangeSetId
+model RosterChangeSet {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+
+  status String @default("DRAFT") // DRAFT, SCHEDULED, LIVE, ARCHIVED, CANCELLED
+
+  effectiveFrom DateTime? // null = goes live immediately when published
+  effectiveTo   DateTime? // null = permanent
+
+  changeType String // CREW_RESTRUCTURE, MEMBER_MOVE, APPLIANCE_CHANGE, ROSTER_DRAFT
+  changeData Json // typed per changeType
+
+  // A URL-safe token so an admin can share a preview link.
+  // Generate with: crypto.randomBytes(16).toString('hex')
+  previewToken String? @unique
+
+  createdById String // Member.id of the admin who created this
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Draft ShiftSlots that belong to this change set
+  draftSlots ShiftSlot[]
+}
+
+// SYSTEM CONFIG
+// Key-value store for system-wide settings the admin can tweak from the UI.
+// Add keys here as needed — no schema migration required for new config values.
+model SystemConfig {
+  // Key examples:
+  //   DEFAULT_EXPECTED_HOURS_PER_PERIOD  → "168"  (hours per roster cycle)
+  //   HOUR_PERIOD_DAYS                   → "28"   (how many days per period)
+  //   SHORT_CREW_WARNING_ENABLED         → "true"
+  //   MIN_CREW_OVERRIDE                  → "3"
+  key   String  @id
+  value String
+  label String? // human-readable description shown in the admin UI
 }
