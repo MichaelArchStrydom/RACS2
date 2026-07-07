@@ -2,9 +2,11 @@ import { db } from '../lib/db'
 import RosterGrid from '@/components/roster/RosterGrid'
 import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
-import UserSelector from '@/components/roster/UserSelector'
 import { requireMember } from '@/lib/auth'
-import { Suspense } from 'react'
+//NOTE:
+//removed. may be useul later
+//import UserSelector from '@/components/roster/UserSelector'
+//import { Suspense } from 'react'
 
 interface PageProps {
   searchParams: Promise<{ date?: string }>
@@ -43,17 +45,31 @@ export default async function HomePage({ searchParams }: PageProps) {
   const prevLink = `/?date=${prevDate.toISOString().split('T')[0]}`;
   const nextLink = `/?date=${nextDate.toISOString().split('T')[0]}`;
 
-  const activeSlots = await db.shiftSlot.findMany({
-    where: { date: { gte: startDate, lte: endDate } },
-    include: {
-      requests: true,
-      assignments: {
-        include: { member: true, actualMember: true },
-        orderBy: { startTime: 'asc' },
+  //Simultaneous execusion optimised for vercels slow performance
+  const [activeSlots, standInRequests, allMembers, activeAppliances] = await Promise.all([
+    db.shiftSlot.findMany({
+      where: { date: { gte: startDate, lte: endDate } },
+      include: {
+        requests: true,
+        assignments: {
+          include: { member: true, actualMember: true },
+          orderBy: { startTime: 'asc' },
+        },
       },
-    },
-    orderBy: { date: 'asc' },
-  });
+      orderBy: { date: 'asc' },
+    }),
+    db.standInRequest.findMany({
+      where: { slot: { date: { gte: startDate, lte: endDate } } },
+      include: { slot: true, requestedBy: true, coveredBy: true },
+      orderBy: { startTime: 'asc' }
+    }),
+    db.member.findMany({ orderBy: { lastName: 'asc' } }),
+    db.appliance.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: 'asc' },
+      select: { name: true }
+    })
+  ]);
 
   const groupedData: Record<string, any[]> = {};
   activeSlots.forEach((slot) => {
@@ -63,20 +79,6 @@ export default async function HomePage({ searchParams }: PageProps) {
     groupedData[dateKey].push(slot);
   });
 
-  const standInRequests = await db.standInRequest.findMany({
-    where: { slot: { date: { gte: startDate, lte: endDate } } },
-    include: { slot: true, requestedBy: true, coveredBy: true },
-    orderBy: { startTime: 'asc' }
-  });
-
-  const allMembers = await db.member.findMany({ orderBy: { lastName: 'asc' } });
-  //const activeUserId = params.user || allMembers[0]?.id || '';
-
-  const activeAppliances = await db.appliance.findMany({
-    where: { isActive: true },
-    orderBy: { displayOrder: 'asc' },
-    select: { name: true }
-  });
   const appliancesArray = activeAppliances.map(a => a.name);
 
   // Build a dropdown list of the active user's own shifts in this window.
@@ -101,13 +103,30 @@ export default async function HomePage({ searchParams }: PageProps) {
         <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
 
-            {/* 2. Wrapped the dropdown inside Suspense to isolate useSearchParams */}
+            {/* Wrapped the dropdown inside Suspense to isolate useSearchParams NOTE: REMOVED ALONG WITH IMPORTS ABOVE. REPLACED WITH LOGOUT BUTTON
             <Suspense fallback={
               <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm w-48 h-8 animate-pulse" />
             }>
               <UserSelector members={allMembers} activeUserId={activeUserId} />
             </Suspense>
-
+            */}
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
+                <span className="text-xs font-bold text-slate-700">{currentMember.firstName} {currentMember.lastName}</span>
+              </div>
+              <a
+                href="/api/auth/logout"
+                className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
+                onClick={(e) => {
+                  // Instant UI update when clicked so the user knows they are logging out
+                  e.currentTarget.innerHTML = 'Signing out...';
+                  e.currentTarget.classList.add('pointer-events-none', 'opacity-60');
+                }}
+              >
+                Sign Out
+              </a>
+            </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
               <p className="text-xs text-slate-400 font-medium">Active Environment Container Node</p>
@@ -123,13 +142,30 @@ export default async function HomePage({ searchParams }: PageProps) {
                 Admin Portal
               </Link>
             )}
-            <Link href={prevLink} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">
+            <Link
+              href={prevLink}
+              className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
+              onClick={(e) => {
+                //a Tailwind animated spinner SVG directly into the button HTML. Was just freezing while silently loading before.
+                e.currentTarget.innerHTML = '<svg class="animate-spin h-3 w-3 text-slate-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Loading';
+                e.currentTarget.classList.add('pointer-events-none', 'opacity-75');
+              }}
+            >
               ← 7 Days
             </Link>
+
             <span className="text-xs text-slate-400 font-mono font-medium px-2 hidden sm:inline">
               {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
-            <Link href={nextLink} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">
+
+            <Link
+              href={nextLink}
+              className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
+              onClick={(e) => {
+                e.currentTarget.innerHTML = 'Loading <svg class="animate-spin h-3 w-3 text-slate-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+                e.currentTarget.classList.add('pointer-events-none', 'opacity-75');
+              }}
+            >
               7 Days →
             </Link>
           </div>
