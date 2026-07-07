@@ -34,7 +34,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
     }),
   ])
 
-  const allActiveCrews = crews.filter(c => c.isActive)
+  const allActiveCrews = crews.filter((c: any) => c.isActive)
 
   return (
     <div className="space-y-6 max-w-5xl">
