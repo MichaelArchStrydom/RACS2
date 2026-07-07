@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { addPublicHoliday, deletePublicHoliday } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+export const dynamic = 'force-dynamic'
 
 interface PageProps {
   searchParams: Promise<{ user?: string }>

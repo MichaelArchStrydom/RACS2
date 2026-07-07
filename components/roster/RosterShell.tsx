@@ -11,7 +11,7 @@
  * never needs to know about the data shape.
  */
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 

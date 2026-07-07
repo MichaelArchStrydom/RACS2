@@ -4,6 +4,7 @@ import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
 import UserSelector from '@/components/roster/UserSelector'
 import { requireMember } from '@/lib/auth'
+import { Suspense } from 'react'
 
 interface PageProps {
   searchParams: Promise<{ date?: string }>
@@ -99,7 +100,14 @@ export default async function HomePage({ searchParams }: PageProps) {
 
         <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <UserSelector members={allMembers} activeUserId={activeUserId} />
+
+            {/* 2. Wrapped the dropdown inside Suspense to isolate useSearchParams */}
+            <Suspense fallback={
+              <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm w-48 h-8 animate-pulse" />
+            }>
+              <UserSelector members={allMembers} activeUserId={activeUserId} />
+            </Suspense>
+
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
               <p className="text-xs text-slate-400 font-medium">Active Environment Container Node</p>
