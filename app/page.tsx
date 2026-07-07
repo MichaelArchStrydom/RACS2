@@ -142,7 +142,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 Admin Portal
               </Link>
             )}
-            <Link
+            <a
               href={prevLink}
               className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               onClick={(e) => {
@@ -152,13 +152,13 @@ export default async function HomePage({ searchParams }: PageProps) {
               }}
             >
               ← 7 Days
-            </Link>
+            </a>
 
             <span className="text-xs text-slate-400 font-mono font-medium px-2 hidden sm:inline">
               {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
 
-            <Link
+            <a
               href={nextLink}
               className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               onClick={(e) => {
@@ -167,7 +167,7 @@ export default async function HomePage({ searchParams }: PageProps) {
               }}
             >
               7 Days →
-            </Link>
+            </a>
           </div>
         </header>
 
