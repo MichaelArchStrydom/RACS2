@@ -57,7 +57,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {navItems.map(item => (
             <Link
               key={item.href}
-              href={`${item.href}${userQuery}`}
+              href={`${item.href}`}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors group ${!isExpanded ? 'justify-center' : ''
                 }`}
               title={!isExpanded ? item.label : undefined} // Tooltip fallback when minimized
@@ -76,7 +76,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         {/* Sidebar Footer Link */}
         <div className="px-4 py-4 border-t border-slate-700 flex justify-center">
           <Link
-            href={`/${userQuery}`}
+            href={`/`}
             className={`flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors ${!isExpanded ? 'justify-center' : ''
               }`}
             title="Back to Roster Board"

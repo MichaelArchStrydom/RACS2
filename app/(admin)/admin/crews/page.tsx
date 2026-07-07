@@ -2,12 +2,16 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { addCrew, updateCrew, moveMemberToCrew } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   searchParams: Promise<{ user?: string }>
 }
 
 export default async function CrewsPage({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+
   const { user: userId } = await searchParams
   if (!userId) redirect('/')
 

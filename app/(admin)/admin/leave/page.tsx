@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { approveLeave, rejectLeave, cancelLeave, createLeave } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; filter?: string }>
@@ -17,6 +18,8 @@ const STATUS_STYLES: Record<string, string> = {
 const LEAVE_TYPES = ['ANNUAL', 'SICK', 'UNPAID', 'SPECIAL', 'OTHER']
 
 export default async function LeavePage({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
   const { user: userId, filter = 'PENDING' } = await searchParams
   if (!userId) redirect('/')
 

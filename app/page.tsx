@@ -3,12 +3,15 @@ import RosterGrid from '@/components/roster/RosterGrid'
 import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
 import UserSelector from '@/components/roster/UserSelector'
+import { requireMember } from '@/lib/auth'
 
 interface PageProps {
-  searchParams: Promise<{ date?: string; user?: string }>
+  searchParams: Promise<{ date?: string }>
 }
 
 export default async function HomePage({ searchParams }: PageProps) {
+  const currentMember = await requireMember()
+  const activeUserId = currentMember.id
   const params = await searchParams;
   const targetDateStr = params.date;
 
@@ -36,9 +39,8 @@ export default async function HomePage({ searchParams }: PageProps) {
   const nextDate = new Date(anchorDate);
   nextDate.setDate(anchorDate.getDate() + 8);
 
-  const userQuery = params.user ? `&user=${params.user}` : '';
-  const prevLink = `/?date=${prevDate.toISOString().split('T')[0]}${userQuery}`;
-  const nextLink = `/?date=${nextDate.toISOString().split('T')[0]}${userQuery}`;
+  const prevLink = `/?date=${prevDate.toISOString().split('T')[0]}`;
+  const nextLink = `/?date=${nextDate.toISOString().split('T')[0]}`;
 
   const activeSlots = await db.shiftSlot.findMany({
     where: { date: { gte: startDate, lte: endDate } },
@@ -67,7 +69,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   });
 
   const allMembers = await db.member.findMany({ orderBy: { lastName: 'asc' } });
-  const activeUserId = params.user || allMembers[0]?.id || '';
+  //const activeUserId = params.user || allMembers[0]?.id || '';
 
   const activeAppliances = await db.appliance.findMany({
     where: { isActive: true },
@@ -104,13 +106,13 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start md:self-center">
-            {/* 🛡️ ADMIN PORTAL BRIDGE LINK */}
+            {/* ADMIN PORTAL BRIDGE LINK */}
             {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
               <Link
                 href={`/admin?user=${activeUserId}`}
                 className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
               >
-                🛡️ Admin Portal
+                Admin Portal
               </Link>
             )}
             <Link href={prevLink} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">

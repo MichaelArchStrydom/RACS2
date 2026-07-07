@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -11,6 +12,9 @@ interface PageProps {
 const ZONE_LABELS: Record<string, string> = { GREEN: 'Green Zone', RED: 'Red Zone', SUBSTITUTE: 'Substitute' }
 
 export default async function MemberDetailPage({ params, searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+
   const { id: memberId } = await params
   const { user: userId } = await searchParams
   if (!userId) redirect('/')
@@ -183,8 +187,8 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                   <button
                     type="submit"
                     className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${hasQual
-                        ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
-                        : 'bg-slate-100 text-slate-500 hover:bg-green-100 hover:text-green-700'
+                      ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
+                      : 'bg-slate-100 text-slate-500 hover:bg-green-100 hover:text-green-700'
                       }`}
                   >
                     {hasQual ? '✓ Awarded' : '+ Award'}
@@ -276,9 +280,9 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                   </span>
                 </div>
                 <span className={`font-semibold px-2 py-0.5 rounded-full ${l.status === 'APPROVED' ? 'bg-green-100 text-green-700' :
-                    l.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' :
-                      l.status === 'CANCELLED' ? 'bg-slate-100 text-slate-500' :
-                        'bg-amber-100 text-amber-700'
+                  l.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' :
+                    l.status === 'CANCELLED' ? 'bg-slate-100 text-slate-500' :
+                      'bg-amber-100 text-amber-700'
                   }`}>{l.status}</span>
               </div>
             ))}

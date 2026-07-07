@@ -2,12 +2,15 @@ import { db } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { generateRoster, clearRosterRange } from '@/app/actions/adminActions'
 import ClearRosterButton from '@/components/roster/ClearRosterButton'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 export default async function RosterToolsPage({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
   const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 

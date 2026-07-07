@@ -1,12 +1,16 @@
 import { db } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { addAppliance, updateAppliance } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   searchParams: Promise<{ user?: string }>
 }
 
 export default async function AppliancesPage({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+
   const { user: userId } = await searchParams
   if (!userId) redirect('/')
 

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { addMember } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; search?: string }>
@@ -10,6 +11,9 @@ interface PageProps {
 const ZONE_LABELS: Record<string, string> = { GREEN: '🟢 Green', RED: '🔴 Red', SUBSTITUTE: '🔵 Sub' }
 
 export default async function MembersPage({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+
   const { user: userId, search } = await searchParams
   if (!userId) redirect('/')
 

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment } from '@/app/actions/adminActions'
+import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -11,6 +12,9 @@ interface PageProps {
 const ZONE_LABELS: Record<string, string> = { GREEN: 'Green Zone', RED: 'Red Zone', SUBSTITUTE: 'Substitute' }
 
 export default async function MemberDetailPage({ params, searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+
   const { id: memberId } = await params
   const { user: userId } = await searchParams
   if (!userId) redirect('/')
