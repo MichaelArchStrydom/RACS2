@@ -67,7 +67,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
 
       {/* Appliance cards */}
       <div className="space-y-4">
-        {appliances.map(a => (
+        {appliances.map((a: any) => (
           <section key={a.id} className={`bg-white rounded-xl border shadow-sm p-5 ${!a.isActive ? 'opacity-60' : ''}`}>
             <form
               action={async (fd: FormData) => {
