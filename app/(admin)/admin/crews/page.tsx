@@ -141,7 +141,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
 
             {/* Members list */}
             <div className="space-y-1">
-              {crew.members.map(m => (
+              {crew.members.map((m: any) => (
                 <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-0">
                   <span className="text-slate-700">{m.lastName}, {m.firstName}</span>
                   <div className="flex items-center gap-2">
