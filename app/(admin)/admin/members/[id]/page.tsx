@@ -50,7 +50,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   if (!member) redirect('/admin/members')
 
   const memberQualKeys = new Set(
-    member.qualifications.filter(mq => mq.isActive).map(mq => mq.qualification.key)
+    member.qualifications.filter((mq: any) => mq.isActive).map((mq: any) => mq.qualification.key)
   )
 
   return (
