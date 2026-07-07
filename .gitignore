@@ -43,7 +43,8 @@ next-env.d.ts
 
 /app/generated/prisma
 
-lib/db.ts
+lib/db-local.ts
+/prisma.config-local.ts
 sillyrefs/cmdcheatsheet.md
 
 prisma/seed.ts
