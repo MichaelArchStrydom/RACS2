@@ -107,7 +107,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
               <label className="text-xs font-semibold text-slate-500">Crew</label>
               <select name="crewId" defaultValue={member.crewId ?? ''} className="border rounded-lg px-3 py-2 text-sm">
                 <option value="">No crew</option>
-                {crews.map(c => <option key={c.id} value={c.id}>{c.watchName}</option>)}
+                {crews.map((c: any) => <option key={c.id} value={c.id}>{c.watchName}</option>)}
               </select>
             </div>
 
