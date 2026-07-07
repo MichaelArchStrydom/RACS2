@@ -86,7 +86,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
                 <span className="text-xs text-slate-400 font-mono w-12">{m.rank}</span>
                 <select name="crewId" className="flex-1 border rounded-lg px-2 py-1 text-sm">
                   <option value="">No crew</option>
-                  {allActiveCrews.map(c => <option key={c.id} value={c.id}>{c.watchName}</option>)}
+                  {allActiveCrews.map((c: any) => <option key={c.id} value={c.id}>{c.watchName}</option>)}
                 </select>
                 <button type="submit" className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg">Assign</button>
               </form>
@@ -97,7 +97,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
 
       {/* Crew cards */}
       <div className="grid md:grid-cols-2 gap-4">
-        {crews.map(crew => (
+        {crews.map((crew: any) => (
           <section key={crew.id} className={`bg-white rounded-xl border shadow-sm p-5 space-y-4 ${!crew.isActive ? 'opacity-60' : ''}`}>
             <div className="flex items-center justify-between">
               <div>
