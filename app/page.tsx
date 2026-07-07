@@ -69,6 +69,13 @@ export default async function HomePage({ searchParams }: PageProps) {
   const allMembers = await db.member.findMany({ orderBy: { lastName: 'asc' } });
   const activeUserId = params.user || allMembers[0]?.id || '';
 
+  const activeAppliances = await db.appliance.findMany({
+    where: { isActive: true },
+    orderBy: { displayOrder: 'asc' },
+    select: { name: true }
+  });
+  const appliancesArray = activeAppliances.map(a => a.name);
+
   // Build a dropdown list of the active user's own shifts in this window.
   // Excludes already-covered segments (actualMemberId set) since those
   // don't need a cover request.
@@ -97,6 +104,15 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start md:self-center">
+            {/* 🛡️ ADMIN PORTAL BRIDGE LINK */}
+            {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
+              <Link
+                href={`/admin?user=${activeUserId}`}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
+              >
+                🛡️ Admin Portal
+              </Link>
+            )}
             <Link href={prevLink} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">
               ← 7 Days
             </Link>
@@ -116,7 +132,12 @@ export default async function HomePage({ searchParams }: PageProps) {
               Window: {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           </div>
-          <RosterGrid groupedData={groupedData} visibleDates={visibleDates} activeUserId={activeUserId} />
+          <RosterGrid
+            groupedData={groupedData}
+            visibleDates={visibleDates}
+            activeUserId={activeUserId}
+            appliances={appliancesArray}
+          />
         </section>
 
         <RequestsBoard

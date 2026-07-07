@@ -14,11 +14,15 @@ model Member {
   crewId String?
   crew   Crew?   @relation(fields: [crewId], references: [id])
 
-  firstName String
-  lastName  String
-  email     String @unique
-  password  String
-  rank      String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
+  firstName         String
+  lastName          String
+  email             String? //Made emails optional. Chris seemed apprehensive to make them the key identifier
+  //login attributes:
+  username          String    @unique
+  password          String //Hashed Passwords
+  passwordUpdatedAt DateTime? //Allows for admin to run session revocations
+
+  rank String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
 
   // qualification booleans kept for backward compat
   // DONE REMOVED FROM ROSTER ENGINE BUT LEFT IN SCHEMA FOR NOW
@@ -57,6 +61,17 @@ model Member {
   qualifications MemberQualification[]
   leaveRecords   MemberLeave[]
   hourLedger     HourLedgerEntry[]
+  sessions       Session[]
+}
+
+//SESSION
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique // random opaque value, stored in the cookie
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 }
 
 // CREW
@@ -122,7 +137,7 @@ model Appliance {
   name         String  @unique // must match ShiftSlot.appliance string value
   displayOrder Int
   seatCount    Int     @default(5) // total seats on this appliance
-  minimumCrew  Int     @default(3) // below this = short-crewed warning
+  minimumCrew  Int     @default(4) // below this = short-crewed warning
   isActive     Boolean @default(true)
   notes        String?
 }

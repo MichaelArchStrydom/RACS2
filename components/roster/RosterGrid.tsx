@@ -7,10 +7,10 @@ interface RosterGridProps {
   groupedData: Record<string, any[]>;
   visibleDates: Date[];
   activeUserId: string;
+  appliances: string[];
 }
 
-export default function RosterGrid({ groupedData, visibleDates, activeUserId }: RosterGridProps) {
-  const appliances = ["1st Due", "2nd Due"];
+export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
   const roles = ["OIC", "Driver", "FF1", "FF2", "FF3"];
 
   return (
@@ -36,7 +36,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId }: 
               {/* SECTION SUB-HEADER ROW */}
               <tr className="bg-slate-100/80 border-y border-slate-200">
                 <td colSpan={8} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 align-middle">
-                  {appliance === "1st Due" ? "1st Due" : "2nd Due"}
+                  {appliance}
                 </td>
               </tr>
 
