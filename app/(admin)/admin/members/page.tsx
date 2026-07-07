@@ -43,7 +43,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Members</h1>
-          <p className="text-sm text-slate-500">{members.filter(m => m.isActive).length} active · {members.length} total</p>
+          <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
           <input name="rank" placeholder="Rank (e.g. FF, SFF, SO)" required className="border rounded-lg px-3 py-2 text-sm" />
           <select name="crewId" className="border rounded-lg px-3 py-2 text-sm">
             <option value="">No crew</option>
-            {crews.map(c => <option key={c.id} value={c.id}>{c.watchName}</option>)}
+            {crews.map((c: any) => <option key={c.id} value={c.id}>{c.watchName}</option>)}
           </select>
           <select name="zoneType" className="border rounded-lg px-3 py-2 text-sm">
             <option value="GREEN">Green Zone</option>
@@ -121,7 +121,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {members.map(m => (
+            {members.map((m: any) => (
               <tr key={m.id} className={`hover:bg-slate-50 transition-colors ${!m.isActive ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-medium text-slate-800">{m.lastName}, {m.firstName}</td>
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{m.rank}</td>
@@ -129,7 +129,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
                 <td className="px-4 py-3 text-xs">{ZONE_LABELS[m.zoneType] ?? m.zoneType}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {m.qualifications.slice(0, 4).map(mq => (
+                    {m.qualifications.slice(0, 4).map((mq: any) => (
                       <span key={mq.id} className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-mono">
                         {mq.qualification.name}
                       </span>

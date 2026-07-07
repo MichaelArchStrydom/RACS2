@@ -19,8 +19,8 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
 
   const holidays = await db.publicHoliday.findMany({ orderBy: { date: 'asc' } })
 
-  const upcoming = holidays.filter(h => new Date(h.date) >= new Date())
-  const past = holidays.filter(h => new Date(h.date) < new Date())
+  const upcoming = holidays.filter((h: any) => new Date(h.date) >= new Date())
+  const past = holidays.filter((h: any) => new Date(h.date) < new Date())
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -75,7 +75,7 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
         <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
           <h2 className="text-sm font-semibold text-slate-700">Upcoming</h2>
           <ul className="space-y-2">
-            {upcoming.map(h => (
+            {upcoming.map((h: any) => (
               <li key={h.id} className="flex items-center justify-between text-sm py-2 border-b border-slate-100 last:border-0">
                 <div>
                   <span className="font-medium text-slate-800">{h.name}</span>

@@ -77,7 +77,7 @@ export default async function LeavePage({ searchParams }: PageProps) {
             <label className="text-xs font-semibold text-slate-500">Member</label>
             <select name="memberId" required className="border rounded-lg px-3 py-2 text-sm">
               <option value="">— select member —</option>
-              {activeMembers.map(m => (
+              {activeMembers.map((m: any) => (
                 <option key={m.id} value={m.id}>{m.lastName}, {m.firstName} ({m.rank})</option>
               ))}
             </select>
@@ -113,7 +113,7 @@ export default async function LeavePage({ searchParams }: PageProps) {
 
       {/* Filter tabs */}
       <div className="flex gap-2 flex-wrap">
-        {filters.map(f => (
+        {filters.map((f: any) => (
           <Link
             key={f.value}
             href={`/admin/leave?user=${userId}&filter=${f.value}`}
@@ -132,7 +132,7 @@ export default async function LeavePage({ searchParams }: PageProps) {
         <p className="text-sm text-slate-400 italic py-8 text-center">No {filter === 'ALL' ? '' : filter.toLowerCase()} leave records.</p>
       ) : (
         <div className="space-y-3">
-          {leaveRecords.map(leave => (
+          {leaveRecords.map((leave: any) => (
             <section key={leave.id} className="bg-white rounded-xl border shadow-sm p-5">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 

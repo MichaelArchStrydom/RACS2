@@ -50,7 +50,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   if (!member) redirect('/admin/members')
 
   const memberQualKeys = new Set(
-    member.qualifications.filter(mq => mq.isActive).map(mq => mq.qualification.key)
+    member.qualifications.filter((mq: any) => mq.isActive).map(mq => mq.qualification.key)
   )
 
   return (
@@ -160,7 +160,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           <h2 className="text-sm font-semibold text-slate-700">Qualifications</h2>
           <p className="text-xs text-slate-400">Toggle qualifications on or off. OFFICER and DRIVER also update the roster engine flags.</p>
           <div className="space-y-2">
-            {allQuals.map(q => {
+            {allQuals.map((q: any) => {
               const hasQual = memberQualKeys.has(q.key)
               return (
                 <form
@@ -271,7 +271,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
         <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
           <h2 className="text-sm font-semibold text-slate-700">Leave History</h2>
           <div className="space-y-2">
-            {leaveRecords.map(l => (
+            {leaveRecords.map((l: any) => (
               <div key={l.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-100 last:border-0">
                 <div>
                   <span className="font-semibold text-slate-700">{l.leaveType}</span>

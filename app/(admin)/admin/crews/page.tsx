@@ -71,7 +71,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
         <details className="px-5 py-4 bg-amber-50 border border-amber-200 rounded-xl">
           <summary className="cursor-pointer text-sm font-semibold text-amber-800 hover:text-rose-600" >⚠️ Crewless Members ({unassignedMembers.length})</summary>
           <div className="space-y-2">
-            {unassignedMembers.map(m => (
+            {unassignedMembers.map((m: any) => (
               <form
                 key={m.id}
                 action={async (fd: FormData) => {
