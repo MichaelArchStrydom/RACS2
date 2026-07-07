@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation'
 import { addAppliance, updateAppliance } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 
+// Force Next.js to skip static compilation and render this live on request
+export const dynamic = 'force-dynamic'
+
 interface PageProps {
   searchParams: Promise<{ user?: string }>
 }
