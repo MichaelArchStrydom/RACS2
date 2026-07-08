@@ -1,6 +1,7 @@
 'use server'
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { setNZHours } from '@/lib/timezone'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -44,23 +45,22 @@ export async function acceptStandInRequest(
   const [shours, smin] = selectedStartStr.split(':').map(Number)
   const [ehours, emin] = selectedEndStr.split(':').map(Number)
 
-  const coverStart = new Date(request.startTime)
-  coverStart.setHours(shours, smin, 0, 0)
+  // FIX: setHours() used the server's local timezone — on Vercel (UTC) that
+  // treated "17:30" as 17:30 UTC instead of 17:30 NZ (= 05:30 UTC), storing
+  // cover windows 12-13h off. setNZHours() converts NZ wall-clock time to the
+  // correct UTC instant regardless of server timezone.
+  //
+  // Both coverStart and coverEnd are based on request.startTime's calendar day
+  // (not request.endTime, which may already be the next day for overnight
+  // shifts) so the day-rollover logic below is the only place that adds a day.
+  const coverStart = setNZHours(new Date(request.startTime), shours, smin)
+  const coverEnd = setNZHours(new Date(request.startTime), ehours, emin)
 
-  // BUG FIX 1: was `new Date(request.endTime)` which put coverEnd on the NEXT
-  // day already (for overnight shifts), then setHours pushed it even further.
-  // e.g. cover 20:00-23:00 on a 17:30→07:00 shift produced a 27h window.
-  // Fix: always base coverEnd on the same calendar date as coverStart.
-  const coverEnd = new Date(request.startTime)
-  coverEnd.setHours(ehours, emin, 0, 0)
-
-  // BUG FIX 2: the old check `if (ehours < shours)` failed for 07:00→07:00
-  // (equal hours, not less-than) so weekend shifts were never adjusted.
-  // Fix: compare actual timestamps — if end is not after start, add a day.
+  // Compare actual timestamps — if end is not after start, add a day.
   // This correctly handles 07:00→07:00 (adds a day → 24h cover) and
   // 20:00→07:00 (adds a day → 11h cover), while leaving 17:30→23:00 alone.
   if (coverEnd.getTime() <= coverStart.getTime()) {
-    coverEnd.setDate(coverEnd.getDate() + 1)
+    coverEnd.setTime(coverEnd.getTime() + 24 * 60 * 60 * 1000)
   }
 
   const intersectingAssignments = await db.shiftAssignment.findMany({

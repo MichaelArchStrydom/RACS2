@@ -4,6 +4,7 @@ import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
 import { requireMember } from '@/lib/auth'
 import { logoutAction } from './actions/authActions'
+import { todayNZDateString, addDaysToDateString, nzMidnightUTC } from '@/lib/timezone'
 //NOTE:
 //removed. may be useul later
 //import UserSelector from '@/components/roster/UserSelector'
@@ -19,31 +20,29 @@ export default async function HomePage({ searchParams }: PageProps) {
   const params = await searchParams;
   const targetDateStr = params.date;
 
-  // 1. Get the target date strictly in New Zealand time to override server defaults
-  const todayNZ = new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' });
-  const baseDateStr = targetDateStr || todayNZ;
-  const [tYear, tMonth, tDay] = baseDateStr.split('-').map(Number);
+  // Anchor on the NZ calendar date, not the server's own "today" — Vercel
+  // runs in UTC, so new Date() there can already be a different calendar
+  // day than it is in NZ.
+  const isValidDateStr = targetDateStr && /^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)
+  const baseDateStr = isValidDateStr ? targetDateStr! : todayNZDateString();
 
-  const visibleDates: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    // This safely generates clean dates matching the New Zealand calendar day
-    visibleDates.push(new Date(tYear, tMonth - 1, tDay + i));
-  }
+  // All calendar-date math below is done on plain "YYYY-MM-DD" strings via
+  // addDaysToDateString, which is pure UTC-anchored calendar arithmetic —
+  // immune to server/browser timezone and DST. Only at the DB-query boundary
+  // do we convert a date string to a real instant, via nzMidnightUTC.
+  const visibleDateStrs = Array.from({ length: 7 }, (_, i) => addDaysToDateString(baseDateStr, i));
+  const visibleDates: Date[] = visibleDateStrs.map(nzMidnightUTC);
 
-  // Cast a slightly wider lookup window to catch shifts on boundary edges across timezones
-  const startDate = new Date(tYear, tMonth - 1, tDay - 1);
-  const endDate = new Date(tYear, tMonth - 1, tDay + 8);
+  const startDate = nzMidnightUTC(visibleDateStrs[0]);
+  const endDate = nzMidnightUTC(addDaysToDateString(visibleDateStrs[6], 1)); // exclusive upper bound
 
-  const prevDate = new Date(tYear, tMonth - 1, tDay - 7);
-  const nextDate = new Date(tYear, tMonth - 1, tDay + 7);
-
-  const prevLink = `/?date=${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-  const nextLink = `/?date=${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+  const prevLink = `/?date=${addDaysToDateString(baseDateStr, -7)}`;
+  const nextLink = `/?date=${addDaysToDateString(baseDateStr, 7)}`;
 
   //Simultaneous execusion optimised for vercels slow performance
   const [activeSlots, standInRequests, allMembers, activeAppliances] = await Promise.all([
     db.shiftSlot.findMany({
-      where: { date: { gte: startDate, lte: endDate } },
+      where: { date: { gte: startDate, lt: endDate } },
       include: {
         requests: true,
         assignments: {
@@ -54,7 +53,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       orderBy: { date: 'asc' },
     }),
     db.standInRequest.findMany({
-      where: { slot: { date: { gte: startDate, lte: endDate } } },
+      where: { slot: { date: { gte: startDate, lt: endDate } } },
       include: { slot: true, requestedBy: true, coveredBy: true },
       orderBy: { startTime: 'asc' }
     }),

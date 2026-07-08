@@ -1,7 +1,7 @@
 import { db } from './db'
-import { toZonedTime } from 'date-fns-tz'
+import { setNZHours, nzMidnightUTC, addDaysToDateString } from './timezone'
 
-export async function generateRosterForDateRange(startDate: Date, daysToGenerate: number) {
+export async function generateRosterForDateRange(startDateStr: string, daysToGenerate: number) {
   const crews = await db.crew.findMany({
     include: {
       members: {
@@ -20,13 +20,17 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
   if (crews.length === 0) throw new Error("No crews found in the database. Please seed first.")
 
   for (let i = 0; i < daysToGenerate; i++) {
-    const currentDay = new Date(startDate)
-    currentDay.setDate(startDate.getDate() + i)
-    currentDay.setHours(0, 0, 0, 0)
+    const dateStr = addDaysToDateString(startDateStr, i)
+    const [y, m, d] = dateStr.split('-').map(Number)
 
-    const dateStr = currentDay.toISOString().split('T')[0]
-    const dayTimestamp = currentDay.getTime()
-    const dayIndex = Math.floor(dayTimestamp / (1000 * 60 * 60 * 24))
+    // The UTC instant of NZ midnight on this calendar date — this is what
+    // gets stored as ShiftSlot.date.
+    const currentDay = nzMidnightUTC(dateStr)
+
+    // Stable epoch-day number anchored to the calendar date itself (not the
+    // server's local timezone) so crew rotation is deterministic regardless
+    // of where this runs.
+    const dayIndex = Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24))
 
     const assignedCrewIndex = Math.abs(dayIndex % crews.length)
     const backupCrewIndex = (assignedCrewIndex + 1) % crews.length
@@ -34,19 +38,22 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
     const activeCrew = crews[assignedCrewIndex]
     const backupCrew = crews[backupCrewIndex]
 
-    const isWeekend = currentDay.getDay() === 0 || currentDay.getDay() === 6
+    // Weekday from the calendar date itself (UTC-anchored), not currentDay.getDay()
+    // which would depend on the server's local timezone.
+    const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+    const isWeekend = weekday === 0 || weekday === 6
 
-    const startHour = isWeekend ? 7 : 17
-    const startMinute = isWeekend ? 0 : 30
-    const shiftStart = toZonedTime(
-      `${dateStr} ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`,
-      'Pacific/Auckland'
-    )
+    // FIX: setNZHours() converts an NZ wall-clock time to the correct UTC
+    // instant regardless of server timezone. The previous code misused
+    // toZonedTime() (which converts UTC → zoned display time, the reverse
+    // direction), so shift times were stored 12-13h wrong on Vercel (UTC).
+    const shiftStart = isWeekend
+      ? setNZHours(currentDay, 7, 0)
+      : setNZHours(currentDay, 17, 30)
 
-    const nextDay = new Date(currentDay)
-    nextDay.setDate(nextDay.getDate() + 1)
-    const nextDayStr = nextDay.toISOString().split('T')[0]
-    const shiftEnd = toZonedTime(`${nextDayStr} 07:00:00`, 'Pacific/Auckland')
+    // shiftEnd is always 07:00 NZ on the next calendar day.
+    const nextDayStr = addDaysToDateString(dateStr, 1)
+    const shiftEnd = setNZHours(nzMidnightUTC(nextDayStr), 7, 0)
 
     // Helper function to pull the right people for the seats
     const assignTruckLineup = async (crew: any, applianceName: string) => {
@@ -55,7 +62,7 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
           date: currentDay,
           appliance: applianceName,
           roleRequired: 'Full Crew',
-          isWeekend: currentDay.getDay() === 0 || currentDay.getDay() === 6
+          isWeekend
         }
       })
 

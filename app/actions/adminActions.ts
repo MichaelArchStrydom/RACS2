@@ -246,21 +246,20 @@ export async function cancelStandInRequest(adminId: string, requestId: string) {
 export async function generateRoster(adminId: string, startDateStr: string, days: number) {
   await requireAdmin(adminId)
   const { generateRosterForDateRange } = await import('@/lib/roster-engine')
-  const startDate = new Date(startDateStr)
-  startDate.setHours(0, 0, 0, 0)
-  await generateRosterForDateRange(startDate, days)
+  await generateRosterForDateRange(startDateStr, days)
   revalidatePath('/')
   revalidatePath('/admin/roster')
 }
 
 export async function clearRosterRange(adminId: string, startDateStr: string, endDateStr: string) {
   await requireAdmin(adminId)
-  const start = new Date(startDateStr); start.setHours(0, 0, 0, 0)
-  const end = new Date(endDateStr); end.setHours(23, 59, 59, 999)
+  const { nzMidnightUTC, addDaysToDateString } = await import('@/lib/timezone')
+  const start = nzMidnightUTC(startDateStr)
+  const end = nzMidnightUTC(addDaysToDateString(endDateStr, 1))
 
   // Delete in dependency order
   const slots = await db.shiftSlot.findMany({
-    where: { date: { gte: start, lte: end } },
+    where: { date: { gte: start, lt: end } },
     select: { id: true }
   })
   const slotIds = slots.map(s => s.id)

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { generateRoster, clearRosterRange } from '@/app/actions/adminActions'
 import ClearRosterButton from '@/components/roster/ClearRosterButton'
 import { requireAdmin } from '@/lib/auth'
+import { todayNZDateString, nzMidnightUTC, addDaysToDateString } from '@/lib/timezone'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; success?: string; error?: string }>
@@ -17,8 +18,10 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
   const adminMember = await db.member.findUnique({ where: { id: userId } })
   if (!adminMember?.isAdmin) redirect('/')
 
-  // Summary: how many days of slots exist from today onward
-  const today = new Date(); today.setHours(0, 0, 0, 0)
+  // Summary: how many days of slots exist from today onward (NZ calendar day,
+  // independent of the server's own timezone)
+  const todayStr = todayNZDateString()
+  const today = nzMidnightUTC(todayStr)
 
   const [futureSlotCount, lastSlotDate, totalAssignments, pendingRequests, openLeave] = await Promise.all([
     db.shiftSlot.count({ where: { date: { gte: today }, status: 'LIVE' } }),
@@ -37,9 +40,8 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
     : 'No slots generated'
 
   // Default start = today, default end = today + 13 (14 days)
-  const defaultStart = today.toISOString().split('T')[0]
-  const defaultEndDate = new Date(today); defaultEndDate.setDate(today.getDate() + 13)
-  const defaultEnd = defaultEndDate.toISOString().split('T')[0]
+  const defaultStart = todayStr
+  const defaultEnd = addDaysToDateString(todayStr, 13)
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -179,9 +181,8 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
               const days = Number(fd.get('regenDays'))
               if (!start || isNaN(days) || days < 1 || days > 365) throw new Error('Invalid input')
 
-              const endDate = new Date(start)
-              endDate.setDate(endDate.getDate() + days - 1)
-              const end = endDate.toISOString().split('T')[0]
+              const { addDaysToDateString } = await import('@/lib/timezone')
+              const end = addDaysToDateString(start, days - 1)
 
               const adminId = fd.get('adminId') as string
               await clearRosterRange(adminId, start, end)

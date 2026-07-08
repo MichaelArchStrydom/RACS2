@@ -13,22 +13,34 @@ interface RosterGridProps {
 export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
   const roles = ["OIC", "Driver", "FF1", "FF2", "FF3"];
 
+  // Derive the NZ calendar date key and weekday for each visible date ONCE,
+  // using explicit timeZone formatting rather than local getters.
+  //
+  // FIX: date.getFullYear()/getMonth()/getDate()/getDay() read the date in
+  // whichever timezone the JS engine happens to be running in — the Vercel
+  // server (UTC) during SSR, then the user's own browser (NZ) after
+  // hydration. Those two can disagree on the calendar day, which produced a
+  // dateKey that didn't match groupedData's NZ-explicit keys from page.tsx,
+  // showing "No Assignment" until the client re-render corrected it.
+  const days = visibleDates.map((date) => {
+    const dateKey = date.toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
+    const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const isWeekend = [0, 6].includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay());
+    return { date, dateKey, dayStr, isWeekend };
+  });
+
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
       <table className="w-full min-w-327.5 table-fixed border-collapse">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
             <th className="p-3 text-left w-15 border-r">Seat</th>
-            {visibleDates.map((date) => {
-              // Timezone fix applied here
-              const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
-              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-              return (
-                <th key={date.toISOString()} className={`p-2 text-center border-r font-medium ${isWeekend ? 'bg-slate-100/50' : ''}`}>
-                  {dayStr}
-                </th>
-              );
-            })}
+            {days.map(({ date, dateKey, dayStr, isWeekend }) => (
+              <th key={dateKey} className={`p-2 text-center border-r font-medium ${isWeekend ? 'bg-slate-100/50' : ''}`}>
+                {dayStr}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -50,8 +62,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                       <span className="text-[9px] block h-3"></span>
                     </div>
                   </td>
-                  {visibleDates.map((date) => {
-                    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                  {days.map(({ dateKey }) => {
                     const daySlots = groupedData[dateKey] || [];
                     const matchingSlot = daySlots.find(s => s.appliance === appliance);
 
