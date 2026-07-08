@@ -1,189 +1,136 @@
-import { db } from '../lib/db'
-import RosterGrid from '@/components/roster/RosterGrid'
+import { db } from '@/lib/db'
 import Link from 'next/link'
-import RequestsBoard from '@/components/roster/RequestsBoard'
-import { requireMember } from '@/lib/auth'
-import { logoutAction } from './actions/authActions'
-//NOTE:
-//removed. may be useul later
-//import UserSelector from '@/components/roster/UserSelector'
-//import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
+import { requireAdmin } from '@/lib/auth'
+
 
 interface PageProps {
-  searchParams: Promise<{ date?: string }>
+  searchParams: Promise<{ user?: string }>
 }
 
-export default async function HomePage({ searchParams }: PageProps) {
-  const currentMember = await requireMember()
-  const activeUserId = currentMember.id
-  const params = await searchParams;
-  const targetDateStr = params.date;
+export default async function AdminDashboard({ searchParams }: PageProps) {
+  const admin = await requireAdmin()
+  const activeUserId = admin.id
+  const { user: userId } = await searchParams
+  if (!userId) redirect(`/?error=no-user`)
 
-  // 1. Get the target date strictly in New Zealand time to override server defaults
-  const todayNZ = new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' });
-  const baseDateStr = targetDateStr || todayNZ;
-  const [tYear, tMonth, tDay] = baseDateStr.split('-').map(Number);
+  const adminMember = await db.member.findUnique({ where: { id: userId } })
+  if (!adminMember?.isAdmin) redirect(`/?error=not-admin`)
 
-  const visibleDates: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    // This safely generates clean dates matching the New Zealand calendar day
-    visibleDates.push(new Date(tYear, tMonth - 1, tDay + i));
-  }
-
-  // Cast a slightly wider lookup window to catch shifts on boundary edges across timezones
-  const startDate = new Date(tYear, tMonth - 1, tDay - 1);
-  const endDate = new Date(tYear, tMonth - 1, tDay + 8);
-
-  const prevDate = new Date(tYear, tMonth - 1, tDay - 7);
-  const nextDate = new Date(tYear, tMonth - 1, tDay + 7);
-
-  const prevLink = `/?date=${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-  const nextLink = `/?date=${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-
-  //Simultaneous execusion optimised for vercels slow performance
-  const [activeSlots, standInRequests, allMembers, activeAppliances] = await Promise.all([
-    db.shiftSlot.findMany({
-      where: { date: { gte: startDate, lte: endDate } },
-      include: {
-        requests: true,
-        assignments: {
-          include: { member: true, actualMember: true },
-          orderBy: { startTime: 'asc' },
-        },
-      },
+  const [
+    totalMembers,
+    activeMembers,
+    totalCrews,
+    pendingLeave,
+    pendingRequests,
+    upcomingHolidays,
+    recentLedger,
+  ] = await Promise.all([
+    db.member.count(),
+    db.member.count({ where: { isActive: true } }),
+    db.crew.count({ where: { isActive: true } }),
+    db.memberLeave.count({ where: { status: 'PENDING' } }),
+    db.standInRequest.count({ where: { status: 'PENDING' } }),
+    db.publicHoliday.findMany({
+      where: { date: { gte: new Date() } },
       orderBy: { date: 'asc' },
+      take: 5,
     }),
-    db.standInRequest.findMany({
-      where: { slot: { date: { gte: startDate, lte: endDate } } },
-      include: { slot: true, requestedBy: true, coveredBy: true },
-      orderBy: { startTime: 'asc' }
+    db.hourLedgerEntry.findMany({
+      orderBy: { recordedAt: 'desc' },
+      take: 8,
+      include: { member: { select: { firstName: true, lastName: true } } }
     }),
-    db.member.findMany({ orderBy: { lastName: 'asc' } }),
-    db.appliance.findMany({
-      where: { isActive: true },
-      orderBy: { displayOrder: 'asc' },
-      select: { name: true }
-    })
-  ]);
+  ])
 
-  const groupedData: Record<string, any[]> = {};
-  activeSlots.forEach((slot) => {
-    // Group slots explicitly by the New Zealand calendar date
-    const dateKey = new Date(slot.date).toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
-    if (!groupedData[dateKey]) groupedData[dateKey] = [];
-    groupedData[dateKey].push(slot);
-  });
-
-  const appliancesArray = activeAppliances.map(a => a.name);
-
-  // Build a dropdown list of the active user's own shifts in this window.
-  // Excludes already-covered segments (actualMemberId set) since those
-  // don't need a cover request.
-  const userShifts = activeSlots.flatMap((slot) =>
-    slot.assignments
-      .filter((a: any) => a.memberId === activeUserId && !a.actualMemberId)
-      .map((a: any) => {
-        const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
-        const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
-        const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
-
-        return {
-          assignmentId: a.id,
-          label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}`,
-          startIso: a.startTime.toISOString(),
-          defaultStart: startStr,
-          defaultEnd: endStr,
-        };
-      })
-  );
+  const stats = [
+    { label: 'Active Members', value: activeMembers, total: totalMembers, href: '/admin/members', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { label: 'Active Crews', value: totalCrews, href: '/admin/crews', color: 'bg-green-50 text-green-700 border-green-200' },
+    { label: 'Pending Leave', value: pendingLeave, href: '/admin/leave', color: pendingLeave > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200' },
+    { label: 'Open Requests', value: pendingRequests, href: '/', color: pendingRequests > 0 ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-50 text-slate-600 border-slate-200' },
+  ]
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="space-y-8 max-w-5xl">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Admin Dashboard</h1>
+        <p className="text-sm text-slate-500 mt-1">Logged in as {adminMember.firstName} {adminMember.lastName}</p>
+      </div>
 
-        <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-
-            {/* Wrapped the dropdown inside Suspense to isolate useSearchParams NOTE: REMOVED ALONG WITH IMPORTS ABOVE. REPLACED WITH LOGOUT BUTTON
-            <Suspense fallback={
-              <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm w-48 h-8 animate-pulse" />
-            }>
-              <UserSelector members={allMembers} activeUserId={activeUserId} />
-            </Suspense>
-            */}
-            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
-                <span className="text-xs font-bold text-slate-700">{currentMember.firstName} {currentMember.lastName}</span>
-              </div>
-
-              {/* Replace the <a> tag with this <form> using your existing logoutAction */}
-              <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
-                >
-                  Sign Out
-                </button>
-              </form>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
-              <p className="text-xs text-slate-400 font-medium">Active Environment Container Node</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-start md:self-center">
-            {/* ADMIN PORTAL BRIDGE LINK */}
-            {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
-              <Link
-                href={`/admin?user=${activeUserId}`}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
-              >
-                Admin Portal
-              </Link>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {stats.map(s => (
+          <Link
+            key={s.label}
+            href={`${s.href}?user=${userId}`}
+            className={`border rounded-xl p-4 flex flex-col gap-1 hover:shadow-sm transition-shadow ${s.color}`}
+          >
+            <span className="text-3xl font-bold">{s.value}</span>
+            {'total' in s && s.total !== s.value && (
+              <span className="text-xs opacity-70">of {s.total} total</span>
             )}
-            <Link
-              href={prevLink}
-              className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
-            >
-              ← 7 Days
-            </Link>
+            <span className="text-xs font-semibold uppercase tracking-wide opacity-80">{s.label}</span>
+          </Link>
+        ))}
+      </div>
 
-            <span className="text-xs text-slate-400 font-mono font-medium px-2 hidden sm:inline">
-              {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-
-            <Link
-              href={nextLink}
-              className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
-            >
-              7 Days →
-            </Link>
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Upcoming public holidays */}
+        <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700">Upcoming Public Holidays</h2>
+            <Link href={`/admin/holidays?user=${userId}`} className="text-xs text-rose-600 hover:underline">Manage →</Link>
           </div>
-        </header>
-
-        <section className="space-y-2">
-          <div className="flex justify-between items-center px-1">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Operational Roster</h2>
-            <span className="text-xs text-slate-400 font-mono">
-              Window: {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-          </div>
-          <RosterGrid
-            groupedData={groupedData}
-            visibleDates={visibleDates}
-            activeUserId={activeUserId}
-            appliances={appliancesArray}
-          />
+          {upcomingHolidays.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">None recorded</p>
+          ) : (
+            <ul className="space-y-2">
+              {upcomingHolidays.map(h => (
+                <li key={h.id} className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-slate-700">{h.name}</span>
+                  <span className="text-slate-400 font-mono">
+                    {new Date(h.date).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
-        <RequestsBoard
-          requests={standInRequests}
-          activeUserId={activeUserId}
-          userShifts={userShifts}
-        />
-
+        {/* Recent hour ledger */}
+        <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700">Recent Hour Adjustments</h2>
+            <Link href={`/admin/members?user=${userId}`} className="text-xs text-rose-600 hover:underline">View Members →</Link>
+          </div>
+          {recentLedger.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No ledger entries yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {recentLedger.map(e => (
+                <li key={e.id} className="flex items-center justify-between text-xs">
+                  <span className="text-slate-700 font-medium">{e.member.lastName}, {e.member.firstName}</span>
+                  <span className={`font-mono font-bold ${e.hoursChange >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
+                    {e.hoursChange >= 0 ? '+' : ''}{e.hoursChange}h
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-    </main>
-  );
+
+      {/* Quick links */}
+      <section className="bg-white rounded-xl border shadow-sm p-5">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Actions</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/admin/roster?user=${userId}`} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">⚙️ Generate Roster</Link>
+          <Link href={`/admin/leave?user=${userId}`} className="px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition-colors">🏖️ Review Leave</Link>
+          <Link href={`/admin/members?user=${userId}`} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">🧑‍🚒 Manage Members</Link>
+          <Link href={`/admin/holidays?user=${userId}`} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors">📅 Add Holiday</Link>
+        </div>
+      </section>
+    </div>
+  )
 }
+

@@ -1,6 +1,7 @@
 'use server'
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { setNZHours } from '@/lib/timezone'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -44,23 +45,23 @@ export async function acceptStandInRequest(
   const [shours, smin] = selectedStartStr.split(':').map(Number)
   const [ehours, emin] = selectedEndStr.split(':').map(Number)
 
-  const coverStart = new Date(request.startTime)
-  coverStart.setHours(shours, smin, 0, 0)
+  // ── FIX: interpret the user-entered time strings as NZ local time.
+  //
+  // Previously, setHours() was used here, which on Vercel (UTC) would treat
+  // "17:30" as 17:30 UTC instead of 17:30 NZ (= 05:30 UTC).  The result was
+  // that cover windows were stored 12-13 hours off.
+  //
+  // setNZHours(base, h, m) converts h:mm NZ local → UTC, accounting for DST.
+  // Both coverStart and coverEnd use request.startTime as the base date so
+  // they land on the correct NZ calendar day.  The existing overflow check
+  // (coverEnd ≤ coverStart → add 24 h) still handles overnight spans correctly
+  // because setNZHours for 07:00 NZ produces a UTC timestamp before the
+  // 17:30 NZ start — exactly like the original code intended.
+  const coverStart = setNZHours(new Date(request.startTime), shours, smin)
+  const coverEnd = setNZHours(new Date(request.startTime), ehours, emin)
 
-  // BUG FIX 1: was `new Date(request.endTime)` which put coverEnd on the NEXT
-  // day already (for overnight shifts), then setHours pushed it even further.
-  // e.g. cover 20:00-23:00 on a 17:30→07:00 shift produced a 27h window.
-  // Fix: always base coverEnd on the same calendar date as coverStart.
-  const coverEnd = new Date(request.startTime)
-  coverEnd.setHours(ehours, emin, 0, 0)
-
-  // BUG FIX 2: the old check `if (ehours < shours)` failed for 07:00→07:00
-  // (equal hours, not less-than) so weekend shifts were never adjusted.
-  // Fix: compare actual timestamps — if end is not after start, add a day.
-  // This correctly handles 07:00→07:00 (adds a day → 24h cover) and
-  // 20:00→07:00 (adds a day → 11h cover), while leaving 17:30→23:00 alone.
   if (coverEnd.getTime() <= coverStart.getTime()) {
-    coverEnd.setDate(coverEnd.getDate() + 1)
+    coverEnd.setTime(coverEnd.getTime() + 24 * 60 * 60 * 1000)
   }
 
   const intersectingAssignments = await db.shiftAssignment.findMany({
@@ -90,7 +91,7 @@ export async function acceptStandInRequest(
             startTime: origStart,
             endTime: actualStart,
             historicalRank: assignment.historicalRank,
-            historicalWatchName: assignment.historicalWatchName
+            historicalWatchName: assignment.historicalWatchName,
           }
         })
       }
@@ -104,7 +105,7 @@ export async function acceptStandInRequest(
           startTime: actualStart,
           endTime: actualEnd,
           historicalRank: assignment.historicalRank,
-          historicalWatchName: assignment.historicalWatchName
+          historicalWatchName: assignment.historicalWatchName,
         }
       })
 
@@ -117,7 +118,7 @@ export async function acceptStandInRequest(
             startTime: actualEnd,
             endTime: origEnd,
             historicalRank: assignment.historicalRank,
-            historicalWatchName: assignment.historicalWatchName
+            historicalWatchName: assignment.historicalWatchName,
           }
         })
       }
@@ -137,7 +138,7 @@ export async function acceptStandInRequest(
         startTime: origReqStart,
         endTime: coverStart,
         status: "PENDING",
-        requestType: request.requestType
+        requestType: request.requestType,
       }
     })
   }
@@ -150,7 +151,7 @@ export async function acceptStandInRequest(
         startTime: coverEnd,
         endTime: origReqEnd,
         status: "PENDING",
-        requestType: request.requestType
+        requestType: request.requestType,
       }
     })
   }
@@ -161,7 +162,7 @@ export async function acceptStandInRequest(
       startTime: coverStart,
       endTime: coverEnd,
       status: "COMPLETED",
-      coveredById: coveringMemberId
+      coveredById: coveringMemberId,
     }
   })
 

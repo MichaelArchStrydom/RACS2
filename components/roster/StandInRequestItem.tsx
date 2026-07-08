@@ -1,21 +1,28 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptStandInRequest } from '@/app/actions/rosterActions'
 
 interface StandInRequestItemProps {
   request: any
   activeUserId: string
-  isMobile?: boolean
 }
 
-export default function StandInRequestItem({ request, activeUserId, isMobile = false }: StandInRequestItemProps) {
+export default function StandInRequestItem({ request, activeUserId }: StandInRequestItemProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const defaultStart = new Date(request.startTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false })
-  const defaultEnd = new Date(request.endTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false })
+  // Self-detect mobile so the isMobile prop is no longer needed
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    setIsMobile(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
+
+  // ── FIX: explicit NZ timezone so times show correctly on Vercel (UTC) ──
+  const NZ_OPTS = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Pacific/Auckland' } as const
+  const defaultStart = new Date(request.startTime).toLocaleTimeString("en-NZ", NZ_OPTS)
+  const defaultEnd = new Date(request.endTime).toLocaleTimeString("en-NZ", NZ_OPTS)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,12 +30,6 @@ export default function StandInRequestItem({ request, activeUserId, isMobile = f
     const startStr = formData.get('coverStart') as string
     const endStr = formData.get('coverEnd') as string
 
-    /* 
-    if (startStr === endStr) {
-      alert("Please select a valid time range. Start and end times cannot be identical.")
-      return
-    }
-    */
     startTransition(async () => {
       await acceptStandInRequest(request.id, activeUserId, startStr, endStr)
       router.refresh()
@@ -64,7 +65,8 @@ export default function StandInRequestItem({ request, activeUserId, isMobile = f
               name="coverStart"
               type={isMobile ? "time" : "text"}
               defaultValue={defaultStart}
-              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'}`}
+              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'
+                }`}
             />
           </div>
 
@@ -74,7 +76,8 @@ export default function StandInRequestItem({ request, activeUserId, isMobile = f
               name="coverEnd"
               type={isMobile ? "time" : "text"}
               defaultValue={defaultEnd}
-              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'}`}
+              className={`bg-white border rounded px-2 font-mono text-xs ${isMobile ? 'py-2 min-w-[130px] text-sm' : 'py-1 w-16 text-center'
+                }`}
             />
           </div>
 
@@ -98,4 +101,3 @@ export default function StandInRequestItem({ request, activeUserId, isMobile = f
     </div>
   )
 }
-

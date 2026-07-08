@@ -1,11 +1,7 @@
 'use client'
 
 import { createStandInRequest, acceptStandInRequest } from '@/app/actions/rosterActions'
-import { useTransition, useState } from 'react'
-
-/*FIX:
- *On login active user is not correctly highlighted until active user is changed, then it works properly.
- */
+import { useTransition, useState, useEffect } from 'react'
 
 interface RosterCellProps {
   assignments: any[];
@@ -16,6 +12,14 @@ interface RosterCellProps {
 export default function RosterCell({ assignments = [], slotRequests = [], activeUserId }: RosterCellProps) {
   const [isPending, startTransition] = useTransition()
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
+
+  // ── Mobile detection ─────────────────────────────────────────────────────
+  // pointer: coarse reliably detects touch screens (phones/tablets) regardless
+  // of screen width. Runs after mount to avoid SSR hydration mismatch.
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    setIsMobile(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
 
   const sortedAssignments = [...assignments].sort((a, b) =>
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
@@ -39,9 +43,12 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         const activeMember = isCovered ? assignment.actualMember : assignment.member;
         const nameFormatted = `${activeMember.lastName}, ${activeMember.firstName.charAt(0)}.`;
 
-        // Timezone fixes applied here
-        const startStr = new Date(assignment.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: "2-digit", minute: "2-digit", hour12: false });
-        const endStr = new Date(assignment.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: "2-digit", minute: "2-digit", hour12: false });
+        // always display in NZ timezone so SSR (Vercel/UTC) and the
+        // client browser produce identical strings, eliminating hydration
+        // mismatches and the "5:30–19:00" symptom caused by UTC rendering.
+        const NZ_OPTS = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Pacific/Auckland' } as const
+        const startStr = new Date(assignment.startTime).toLocaleTimeString("en-NZ", NZ_OPTS)
+        const endStr = new Date(assignment.endTime).toLocaleTimeString("en-NZ", NZ_OPTS)
 
         let cellStyles = "bg-white text-slate-800 border-slate-200"
         if (isRequested) {
@@ -58,6 +65,14 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
         const isActiveMember = activeMember.id === activeUserId
         const currentRequest = slotRequests.find(r => r.status === 'PENDING' && r.requestedById === assignment.memberId);
+
+        // ── Shared time input style helpers ──────────────────────────────────
+        // Desktop: compact text inputs that fit inside the small hover overlay
+        // Mobile:  native time-picker inputs (type="time") — shows the OS time
+        //          wheel; wider to accommodate the picker chrome
+        const timeInputClass = isMobile
+          ? "flex-1 bg-slate-700 text-white border border-slate-500 rounded px-2 py-2 text-sm"
+          : "w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white"
 
         return (
           <div
@@ -88,6 +103,10 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const ed = formData.get('end') as string
 
                       startTransition(async () => {
+                        // Time strings are NZ local time (from display). The server
+                        // action interprets them as NZ time via setNZHours().
+                        // For the createStandInRequest path, computation stays
+                        // client-side where setHours() uses the browser's NZ timezone.
                         const targetStart = new Date(assignment.startTime)
                         const [sh, sm] = s.split(':').map(Number)
                         targetStart.setHours(sh, sm, 0, 0)
@@ -103,12 +122,33 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                         setShowTimePicker(null)
                       })
                     }}
-                    className="w-full flex items-center justify-between gap-1 text-[9px]"
+                    className={`w-full flex ${isMobile ? 'flex-col gap-2' : 'items-center justify-between gap-1'} text-[9px]`}
                   >
-                    <input name="start" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="end" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    {isMobile ? (
+                      <>
+                        <div className="flex gap-2">
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">From</span>
+                            <input name="start" type="time" defaultValue={startStr} className={timeInputClass} />
+                          </div>
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">Until</span>
+                            <input name="end" type="time" defaultValue={endStr} className={timeInputClass} />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="flex-1 bg-amber-500 py-2 rounded font-bold text-slate-950 text-xs">Post</button>
+                          <button type="button" onClick={() => setShowTimePicker(null)} className="flex-1 bg-slate-700 py-2 rounded text-xs">Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input name="start" type="text" defaultValue={startStr} className={timeInputClass} />
+                        <input name="end" type="text" defaultValue={endStr} className={timeInputClass} />
+                        <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
+                        <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                      </>
+                    )}
                   </form>
                 )}
               </div>
@@ -136,18 +176,39 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                         setShowTimePicker(null)
                       })
                     }}
-                    className="w-full flex items-center justify-between gap-1 text-[9px]"
+                    className={`w-full flex ${isMobile ? 'flex-col gap-2' : 'items-center justify-between gap-1'} text-[9px]`}
                   >
-                    <input name="coverStart" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="coverEnd" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    {isMobile ? (
+                      <>
+                        <div className="flex gap-2">
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">From</span>
+                            <input name="coverStart" type="time" defaultValue={startStr} className={timeInputClass} />
+                          </div>
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">Until</span>
+                            <input name="coverEnd" type="time" defaultValue={endStr} className={timeInputClass} />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="flex-1 bg-amber-500 py-2 rounded font-bold text-slate-950 text-xs">Confirm Cover</button>
+                          <button type="button" onClick={() => setShowTimePicker(null)} className="flex-1 bg-slate-700 py-2 rounded text-xs">Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input name="coverStart" type="text" defaultValue={startStr} className={timeInputClass} />
+                        <input name="coverEnd" type="text" defaultValue={endStr} className={timeInputClass} />
+                        <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
+                        <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                      </>
+                    )}
                   </form>
                 )}
               </div>
             )}
 
-            {/* FORM 3: RETRACT COVER FOR YOURSELF */}
+            {/* FORM 3: RETRACT COVER */}
             {isRequested && currentRequest && isActiveMember && (
               <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
                 {showTimePicker !== assignment.id ? (
@@ -169,12 +230,33 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                         setShowTimePicker(null)
                       })
                     }}
-                    className="w-full flex items-center justify-between gap-1 text-[9px]"
+                    className={`w-full flex ${isMobile ? 'flex-col gap-2' : 'items-center justify-between gap-1'} text-[9px]`}
                   >
-                    <input name="coverStart" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="coverEnd" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    {isMobile ? (
+                      <>
+                        <div className="flex gap-2">
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">From</span>
+                            <input name="coverStart" type="time" defaultValue={startStr} className={timeInputClass} />
+                          </div>
+                          <div className="flex flex-col gap-0.5 flex-1">
+                            <span className="text-[10px] text-slate-400">Until</span>
+                            <input name="coverEnd" type="time" defaultValue={endStr} className={timeInputClass} />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="flex-1 bg-rose-600 py-2 rounded font-bold text-white text-xs">Retract</button>
+                          <button type="button" onClick={() => setShowTimePicker(null)} className="flex-1 bg-slate-700 py-2 rounded text-xs">Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input name="coverStart" type="text" defaultValue={startStr} className={timeInputClass} />
+                        <input name="coverEnd" type="text" defaultValue={endStr} className={timeInputClass} />
+                        <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
+                        <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                      </>
+                    )}
                   </form>
                 )}
               </div>
@@ -183,5 +265,5 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         )
       })}
     </div>
-  );
+  )
 }
