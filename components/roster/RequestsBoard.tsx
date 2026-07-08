@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
 import { createStandInRequest } from '@/app/actions/rosterActions'
 import { normalizeTimeInput } from '@/lib/timezone'
+import Spinner from '@/components/Spinner'
 
 interface UserShift {
   assignmentId: string
@@ -20,12 +22,14 @@ interface RequestsBoardProps {
 }
 
 export default function RequestsBoard({ requests, activeUserId, userShifts }: RequestsBoardProps) {
+  const router = useRouter()
   const [showCovered, setShowCovered] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedShiftId, setSelectedShiftId] = useState('')
   const [coverStart, setCoverStart] = useState('')
   const [coverEnd, setCoverEnd] = useState('')
   const [isCreating, startCreateTransition] = useTransition()
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const filteredRequests = requests.filter(req => showCovered || req.status === 'PENDING')
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
@@ -48,6 +52,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedShift) return
+    setCreateError(null)
 
     const startDate = new Date(selectedShift.startIso)
     const [sh, sm] = coverStart.split(':').map(Number)
@@ -61,11 +66,16 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
     }
 
     startCreateTransition(async () => {
-      await createStandInRequest(selectedShift.assignmentId, activeUserId, startDate, endDate)
-      setShowCreateForm(false)
-      setSelectedShiftId('')
-      setCoverStart('')
-      setCoverEnd('')
+      try {
+        await createStandInRequest(selectedShift.assignmentId, activeUserId, startDate, endDate)
+        setShowCreateForm(false)
+        setSelectedShiftId('')
+        setCoverStart('')
+        setCoverEnd('')
+      } catch {
+        setCreateError('Something went wrong posting this request — please try again.')
+        router.refresh()
+      }
     })
   }
 
@@ -112,6 +122,10 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
           className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col gap-3"
         >
           <p className="text-xs font-semibold text-slate-600">Select one of your upcoming shifts and the hours you need covered:</p>
+
+          {createError && (
+            <p className="text-[11px] font-semibold text-rose-600">{createError}</p>
+          )}
 
           <select
             value={selectedShiftId}
@@ -169,8 +183,9 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
               <button
                 type="submit"
                 disabled={isCreating}
-                className="w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+                className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
               >
+                {isCreating && <Spinner className="w-3.5 h-3.5" />}
                 {isCreating ? 'Posting…' : 'Post Request'}
               </button>
             </div>

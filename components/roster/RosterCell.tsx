@@ -1,11 +1,11 @@
 'use client'
 
 import { createStandInRequest, acceptStandInRequest } from '@/app/actions/rosterActions'
+import { ALREADY_ACTIONED } from '@/lib/errors'
 import { useTransition, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Spinner from '@/components/Spinner'
 
-/*FIX:
- *On login active user is not correctly highlighted until active user is changed, then it works properly.
- */
 
 interface RosterCellProps {
   assignments: any[];
@@ -14,8 +14,10 @@ interface RosterCellProps {
 }
 
 export default function RosterCell({ assignments = [], slotRequests = [], activeUserId }: RosterCellProps) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const sortedAssignments = [...assignments].sort((a, b) =>
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
@@ -58,6 +60,11 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         const isActiveMember = activeMember.id === activeUserId
         const currentRequest = slotRequests.find(r => r.status === 'PENDING' && r.requestedById === assignment.memberId);
 
+        const closePicker = () => {
+          setShowTimePicker(null)
+          setError(null)
+        }
+
         return (
           <div
             key={assignment.id}
@@ -70,7 +77,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
             {/* FORM 1: REQUEST COVER */}
             {!isRequested && isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
@@ -85,8 +92,12 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const formData = new FormData(e.currentTarget)
                       const s = formData.get('start') as string
                       const ed = formData.get('end') as string
+                      setError(null)
 
                       startTransition(async () => {
+                        // Times are NZ local (from display); this runs in the
+                        // browser so setHours() uses the browser's own
+                        // timezone, which for NZ-based crew is NZ time.
                         const targetStart = new Date(assignment.startTime)
                         const [sh, sm] = s.split(':').map(Number)
                         targetStart.setHours(sh, sm, 0, 0)
@@ -98,24 +109,34 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                           targetEnd.setDate(targetEnd.getDate() + 1)
                         }
 
-                        await createStandInRequest(assignment.id, assignment.memberId, targetStart, targetEnd)
-                        setShowTimePicker(null)
+                        try {
+                          await createStandInRequest(assignment.id, assignment.memberId, targetStart, targetEnd)
+                          setShowTimePicker(null)
+                        } catch {
+                          setError('Something went wrong — please try again.')
+                          router.refresh()
+                        }
                       })
                     }}
                     className="w-full flex items-center justify-between gap-1 text-[9px]"
                   >
-                    <input name="start" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="end" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    <input name="start" defaultValue={startStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <input name="end" defaultValue={endStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <button type="submit" disabled={isPending} className="flex items-center justify-center gap-1 bg-amber-500 px-1.5 rounded font-bold text-slate-950 disabled:opacity-60">
+                      {isPending ? <Spinner className="w-2.5 h-2.5" /> : 'Go'}
+                    </button>
+                    <button type="button" disabled={isPending} onClick={closePicker} className="bg-slate-700 px-1 rounded disabled:opacity-50">X</button>
                   </form>
+                )}
+                {error && showTimePicker === assignment.id && (
+                  <p className="text-[8px] font-semibold text-rose-300 text-center px-1">{error}</p>
                 )}
               </div>
             )}
 
             {/* FORM 2: PICK UP COVER */}
             {isRequested && currentRequest && !isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
@@ -130,25 +151,40 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const formData = new FormData(e.currentTarget)
                       const startStrInput = formData.get('coverStart') as string
                       const endStrInput = formData.get('coverEnd') as string
+                      setError(null)
                       startTransition(async () => {
-                        await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
-                        setShowTimePicker(null)
+                        try {
+                          await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
+                          setShowTimePicker(null)
+                        } catch (err) {
+                          setError(
+                            err instanceof Error && err.message === ALREADY_ACTIONED
+                              ? 'Someone else just took this — refreshing…'
+                              : 'Something went wrong — please try again.'
+                          )
+                          router.refresh()
+                        }
                       })
                     }}
                     className="w-full flex items-center justify-between gap-1 text-[9px]"
                   >
-                    <input name="coverStart" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="coverEnd" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    <input name="coverStart" defaultValue={startStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <input name="coverEnd" defaultValue={endStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <button type="submit" disabled={isPending} className="flex items-center justify-center gap-1 bg-amber-500 px-1.5 rounded font-bold text-slate-950 disabled:opacity-60">
+                      {isPending ? <Spinner className="w-2.5 h-2.5" /> : 'Go'}
+                    </button>
+                    <button type="button" disabled={isPending} onClick={closePicker} className="bg-slate-700 px-1 rounded disabled:opacity-50">X</button>
                   </form>
+                )}
+                {error && showTimePicker === assignment.id && (
+                  <p className="text-[8px] font-semibold text-rose-300 text-center px-1">{error}</p>
                 )}
               </div>
             )}
 
             {/* FORM 3: RETRACT COVER FOR YOURSELF */}
             {isRequested && currentRequest && isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
@@ -163,18 +199,33 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                       const formData = new FormData(e.currentTarget)
                       const startStrInput = formData.get('coverStart') as string
                       const endStrInput = formData.get('coverEnd') as string
+                      setError(null)
                       startTransition(async () => {
-                        await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
-                        setShowTimePicker(null)
+                        try {
+                          await acceptStandInRequest(currentRequest.id, activeUserId, startStrInput, endStrInput)
+                          setShowTimePicker(null)
+                        } catch (err) {
+                          setError(
+                            err instanceof Error && err.message === ALREADY_ACTIONED
+                              ? 'Someone else just actioned this — refreshing…'
+                              : 'Something went wrong — please try again.'
+                          )
+                          router.refresh()
+                        }
                       })
                     }}
                     className="w-full flex items-center justify-between gap-1 text-[9px]"
                   >
-                    <input name="coverStart" defaultValue={startStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <input name="coverEnd" defaultValue={endStr} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white" />
-                    <button type="submit" className="bg-amber-500 px-1.5 rounded font-bold text-slate-950">Go</button>
-                    <button type="button" onClick={() => setShowTimePicker(null)} className="bg-slate-700 px-1 rounded">X</button>
+                    <input name="coverStart" defaultValue={startStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <input name="coverEnd" defaultValue={endStr} disabled={isPending} className="w-10 bg-slate-800 text-center border border-slate-600 rounded py-0.5 text-white disabled:opacity-50" />
+                    <button type="submit" disabled={isPending} className="flex items-center justify-center gap-1 bg-amber-500 px-1.5 rounded font-bold text-slate-950 disabled:opacity-60">
+                      {isPending ? <Spinner className="w-2.5 h-2.5" /> : 'Go'}
+                    </button>
+                    <button type="button" disabled={isPending} onClick={closePicker} className="bg-slate-700 px-1 rounded disabled:opacity-50">X</button>
                   </form>
+                )}
+                {error && showTimePicker === assignment.id && (
+                  <p className="text-[8px] font-semibold text-rose-300 text-center px-1">{error}</p>
                 )}
               </div>
             )}

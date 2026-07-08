@@ -5,6 +5,7 @@ import RequestsBoard from '@/components/roster/RequestsBoard'
 import { requireMember } from '@/lib/auth'
 import { logoutAction } from './actions/authActions'
 import { todayNZDateString, addDaysToDateString, nzMidnightUTC } from '@/lib/timezone'
+import LiveRefresher from '@/components/LiveRefresher'
 //NOTE:
 //removed. may be useul later
 //import UserSelector from '@/components/roster/UserSelector'
@@ -100,6 +101,7 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
+      <LiveRefresher />
       <div className="max-w-7xl mx-auto space-y-6">
 
         <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">

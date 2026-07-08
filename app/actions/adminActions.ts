@@ -236,7 +236,13 @@ export async function createLeave(adminId: string, data: {
 
 export async function cancelStandInRequest(adminId: string, requestId: string) {
   await requireAdmin(adminId)
-  await db.standInRequest.update({ where: { id: requestId }, data: { status: 'CANCELLED' } })
+  // Conditional update guards against cancelling a request a member has
+  // just claimed — only cancel while it's still PENDING.
+  const result = await db.standInRequest.updateMany({
+    where: { id: requestId, status: 'PENDING' },
+    data: { status: 'CANCELLED' }
+  })
+  if (result.count === 0) throw new Error('This request has already been actioned and can no longer be cancelled.')
   revalidatePath('/admin')
   revalidatePath('/')
 }

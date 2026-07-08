@@ -3,7 +3,9 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptStandInRequest } from '@/app/actions/rosterActions'
+import { ALREADY_ACTIONED } from '@/lib/errors'
 import { formatNZTime, normalizeTimeInput } from '@/lib/timezone'
+import Spinner from '@/components/Spinner'
 
 interface StandInRequestItemProps {
   request: any
@@ -13,6 +15,7 @@ interface StandInRequestItemProps {
 export default function StandInRequestItem({ request, activeUserId }: StandInRequestItemProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   const defaultStart = formatNZTime(request.startTime)
   const defaultEnd = formatNZTime(request.endTime)
@@ -22,9 +25,19 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     startTransition(async () => {
-      await acceptStandInRequest(request.id, activeUserId, coverStart, coverEnd)
-      router.refresh()
+      try {
+        await acceptStandInRequest(request.id, activeUserId, coverStart, coverEnd)
+        router.refresh()
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message === ALREADY_ACTIONED
+            ? 'Someone else just actioned this request — refreshing…'
+            : 'Something went wrong — please try again.'
+        )
+        router.refresh()
+      }
     })
   }
 
@@ -51,6 +64,9 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
 
       {request.status === "PENDING" ? (
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 bg-slate-50 p-3 rounded-lg border w-full md:w-auto">
+          {error && (
+            <p className="text-[11px] font-semibold text-rose-600">{error}</p>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-semibold text-slate-500">Fulfill From:</span>
@@ -92,11 +108,12 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
             <button
               type="submit"
               disabled={isPending}
-              className={`px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-2.5 md:py-1.5
+              className={`flex items-center justify-center gap-1.5 px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-2.5 md:py-1.5
                 ${isOwnRequest
                   ? 'bg-rose-500 hover:bg-rose-600 text-white'
                   : 'bg-amber-500 hover:bg-amber-600 text-white'}`}
             >
+              {isPending && <Spinner className="w-3.5 h-3.5" />}
               {isPending ? 'Processing...' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
             </button>
           </div>
