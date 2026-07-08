@@ -39,8 +39,9 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         const activeMember = isCovered ? assignment.actualMember : assignment.member;
         const nameFormatted = `${activeMember.lastName}, ${activeMember.firstName.charAt(0)}.`;
 
-        const startStr = new Date(assignment.startTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false });
-        const endStr = new Date(assignment.endTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: false });
+        // Timezone fixes applied here
+        const startStr = new Date(assignment.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: "2-digit", minute: "2-digit", hour12: false });
+        const endStr = new Date(assignment.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: "2-digit", minute: "2-digit", hour12: false });
 
         let cellStyles = "bg-white text-slate-800 border-slate-200"
         if (isRequested) {

@@ -20,7 +20,8 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
             <th className="p-3 text-left w-15 border-r">Seat</th>
             {visibleDates.map((date) => {
-              const dayStr = date.toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' });
+              // Timezone fix applied here
+              const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
               return (
                 <th key={date.toISOString()} className={`p-2 text-center border-r font-medium ${isWeekend ? 'bg-slate-100/50' : ''}`}>
