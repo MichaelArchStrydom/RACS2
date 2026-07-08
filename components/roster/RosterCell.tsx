@@ -19,9 +19,25 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const sortedAssignments = [...assignments].sort((a, b) =>
+  const sorted = [...assignments].sort((a, b) =>
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   )
+  const sortedAssignments = sorted.reduce<any[]>((acc, current) => {
+    const currentOwner = current.actualMemberId ?? current.memberId
+    const last = acc[acc.length - 1]
+
+    const sameOwner = last && (last.actualMemberId ?? last.memberId) === currentOwner
+    const isContiguous = last && new Date(last.endTime).getTime() === new Date(current.startTime).getTime()
+
+    if (sameOwner && isContiguous) {
+      // Same person, picks up exactly where the last slice left off — stretch it instead of adding a new row
+      last.endTime = current.endTime
+    } else {
+      acc.push({ ...current })
+    }
+
+    return acc
+  }, [] as any[])
 
   return (
     <div className="w-full h-full flex flex-col gap-1">
