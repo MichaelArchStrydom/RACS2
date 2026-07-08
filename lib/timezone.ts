@@ -54,15 +54,28 @@ export function getNZOffsetHours(date: Date): number {
  *   setNZHours(new Date('2024-07-01T00:00:00Z'), 17, 30)
  *   → new Date('2024-07-01T05:30:00Z')  (= 17:30 NZST)
  *
- * JavaScript's setUTCHours normalises negative values automatically, so
- * times that cross midnight (e.g. 07:00 NZ = -5 UTC hours on that date)
- * roll back to the previous UTC day, which is the correct stored value.
+ * FIX: the result is built from the NZ CALENDAR DATE that `date` represents
+ * (via Intl formatting), not from `date`'s own UTC calendar day. Those two
+ * disagree whenever `date`'s NZ-local hour is earlier than the NZ offset
+ * (e.g. any early-morning NZ instant — 07:00 shift starts, or NZ-midnight
+ * anchors like nzMidnightUTC()) — in that regime the previous implementation
+ * (clone + setUTCHours) silently anchored on the wrong day and produced a
+ * result 24h too early. Building from the NZ date string sidesteps that.
  */
 export function setNZHours(date: Date, hours: number, minutes: number): Date {
+  const dateFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: NZ_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  const parts = Object.fromEntries(
+    dateFmt.formatToParts(date).map(p => [p.type, p.value])
+  )
+  const y = parseInt(parts.year)
+  const m = parseInt(parts.month)
+  const d = parseInt(parts.day)
+
   const offset = getNZOffsetHours(date)
-  const result = new Date(date)
-  result.setUTCHours(hours - offset, minutes, 0, 0)
-  return result
+  return new Date(Date.UTC(y, m - 1, d, hours - offset, minutes, 0, 0))
 }
 
 /**
