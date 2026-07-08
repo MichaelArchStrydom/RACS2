@@ -63,10 +63,19 @@ export async function acceptStandInRequest(
     coverEnd.setTime(coverEnd.getTime() + 24 * 60 * 60 * 1000)
   }
 
+  // FIX: request.requestedById is whoever is CURRENTLY asking for cover —
+  // which may be the shift's original owner (memberId) OR someone who's
+  // already covering it and now needs a further stand-in (actualMemberId).
+  // Matching on memberId alone missed this second, "chain covering" case
+  // entirely, so a further cover request could never find (or split) the
+  // right assignment.
   const intersectingAssignments = await db.shiftAssignment.findMany({
     where: {
       slotId: request.slotId,
-      memberId: request.requestedById,
+      OR: [
+        { memberId: request.requestedById },
+        { actualMemberId: request.requestedById },
+      ],
       startTime: { lt: coverEnd },
       endTime: { gt: coverStart }
     }
@@ -81,12 +90,17 @@ export async function acceptStandInRequest(
 
     if (actualStart.getTime() < actualEnd.getTime()) {
 
+      // FIX: leftover (uncovered-by-this-action) slices must keep whoever
+      // was already covering this assignment (assignment.actualMemberId).
+      // Previously this was dropped, which silently reverted a covering
+      // member's remaining shift back to the original owner.
       if (origStart.getTime() < actualStart.getTime()) {
         await db.shiftAssignment.create({
           data: {
             slotId: assignment.slotId,
             applianceRole: assignment.applianceRole,
             memberId: assignment.memberId,
+            actualMemberId: assignment.actualMemberId,
             startTime: origStart,
             endTime: actualStart,
             historicalRank: assignment.historicalRank,
@@ -114,6 +128,7 @@ export async function acceptStandInRequest(
             slotId: assignment.slotId,
             applianceRole: assignment.applianceRole,
             memberId: assignment.memberId,
+            actualMemberId: assignment.actualMemberId,
             startTime: actualEnd,
             endTime: origEnd,
             historicalRank: assignment.historicalRank,

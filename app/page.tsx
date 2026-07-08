@@ -75,20 +75,22 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   const appliancesArray = activeAppliances.map(a => a.name);
 
-  // Build a dropdown list of the active user's own shifts in this window.
-  // Excludes already-covered segments (actualMemberId set) since those
-  // don't need a cover request.
+  // Build a dropdown list of shifts the active user can put up for cover:
+  // either their own original assignment (not yet covered), or one they're
+  // currently covering for someone else (a "chain" cover request).
   const userShifts = activeSlots.flatMap((slot) =>
     slot.assignments
-      .filter((a: any) => a.memberId === activeUserId && !a.actualMemberId)
+      .filter((a: any) => (a.memberId === activeUserId && !a.actualMemberId) || a.actualMemberId === activeUserId)
       .map((a: any) => {
         const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
         const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
         const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+        const isCovering = a.actualMemberId === activeUserId
+        const coveringNote = isCovering ? ` · covering for ${a.member.lastName}` : ''
 
         return {
           assignmentId: a.id,
-          label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}`,
+          label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}${coveringNote}`,
           startIso: a.startTime.toISOString(),
           defaultStart: startStr,
           defaultEnd: endStr,
