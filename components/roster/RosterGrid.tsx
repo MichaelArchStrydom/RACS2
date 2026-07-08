@@ -71,7 +71,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                     const slotRequests = matchingSlot?.requests || [];
 
                     return (
-                      <td key={dateKey} className="p-1 border-r align-top min-w-25">
+                      <td key={dateKey} className="p-1 border-r align-top min-w-20">
                         {roleAssignments.length > 0 ? (
                           <RosterCell
                             assignments={roleAssignments}
