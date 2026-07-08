@@ -108,7 +108,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
 
       {/* Member table */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-        <table className="w-full text-sm border-collapse">
+        <table className="w-full text-sm table-fixed border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase tracking-wide">
               <th className="px-4 py-3 text-left">Name</th>

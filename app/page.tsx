@@ -132,7 +132,6 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
-              <p className="text-xs text-slate-400 font-medium">Active Environment Container Node</p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start md:self-center">
