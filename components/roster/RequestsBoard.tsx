@@ -148,31 +148,6 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
 
           {selectedShiftId && presets && (
             <div className="flex flex-col gap-3">
-              {/* Quick-pick presets — mobile only. Desktop keeps direct entry. */}
-              <div className="flex md:hidden gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setCoverStart(presets.whole.start); setCoverEnd(presets.whole.end) }}
-                  className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Whole Shift
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCoverStart(presets.first.start); setCoverEnd(presets.first.end) }}
-                  className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  First Half
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCoverStart(presets.second.start); setCoverEnd(presets.second.end) }}
-                  className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Second Half
-                </button>
-              </div>
-
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-semibold text-slate-500">Cover From:</span>
