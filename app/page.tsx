@@ -19,32 +19,26 @@ export default async function HomePage({ searchParams }: PageProps) {
   const params = await searchParams;
   const targetDateStr = params.date;
 
-  let anchorDate = new Date();
-  if (targetDateStr) {
-    const parsed = new Date(targetDateStr);
-    if (!isNaN(parsed.getTime())) anchorDate = parsed;
-  }
-  anchorDate.setHours(0, 0, 0, 0);
+  // 1. Get the target date strictly in New Zealand time to override server defaults
+  const todayNZ = new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' });
+  const baseDateStr = targetDateStr || todayNZ;
+  const [tYear, tMonth, tDay] = baseDateStr.split('-').map(Number);
 
   const visibleDates: Date[] = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(anchorDate);
-    d.setDate(anchorDate.getDate() + i);
-    visibleDates.push(d);
+    // This safely generates clean dates matching the New Zealand calendar day
+    visibleDates.push(new Date(tYear, tMonth - 1, tDay + i));
   }
 
-  const startDate = new Date(visibleDates[0]);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(visibleDates[6]);
-  endDate.setHours(23, 59, 59, 999);
+  // Cast a slightly wider lookup window to catch shifts on boundary edges across timezones
+  const startDate = new Date(tYear, tMonth - 1, tDay - 1);
+  const endDate = new Date(tYear, tMonth - 1, tDay + 8);
 
-  const prevDate = new Date(anchorDate);
-  prevDate.setDate(anchorDate.getDate() - 6);
-  const nextDate = new Date(anchorDate);
-  nextDate.setDate(anchorDate.getDate() + 8);
+  const prevDate = new Date(tYear, tMonth - 1, tDay - 7);
+  const nextDate = new Date(tYear, tMonth - 1, tDay + 7);
 
-  const prevLink = `/?date=${prevDate.toISOString().split('T')[0]}`;
-  const nextLink = `/?date=${nextDate.toISOString().split('T')[0]}`;
+  const prevLink = `/?date=${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+  const nextLink = `/?date=${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
 
   //Simultaneous execusion optimised for vercels slow performance
   const [activeSlots, standInRequests, allMembers, activeAppliances] = await Promise.all([
@@ -74,8 +68,8 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   const groupedData: Record<string, any[]> = {};
   activeSlots.forEach((slot) => {
-    const slotDateObj = new Date(slot.date);
-    const dateKey = `${slotDateObj.getFullYear()}-${String(slotDateObj.getMonth() + 1).padStart(2, '0')}-${String(slotDateObj.getDate()).padStart(2, '0')}`;
+    // Group slots explicitly by the New Zealand calendar date
+    const dateKey = new Date(slot.date).toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
     if (!groupedData[dateKey]) groupedData[dateKey] = [];
     groupedData[dateKey].push(slot);
   });
@@ -88,13 +82,19 @@ export default async function HomePage({ searchParams }: PageProps) {
   const userShifts = activeSlots.flatMap((slot) =>
     slot.assignments
       .filter((a: any) => a.memberId === activeUserId && !a.actualMemberId)
-      .map((a: any) => ({
-        assignmentId: a.id,
-        label: `${new Date(slot.date).toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' })} · ${slot.appliance} · ${a.applianceRole} · ${new Date(a.startTime).toLocaleTimeString("en-NZ", { hour: '2-digit', minute: '2-digit', hour12: false })}–${new Date(a.endTime).toLocaleTimeString("en-NZ", { hour: '2-digit', minute: '2-digit', hour12: false })}`,
-        startIso: a.startTime.toISOString(),
-        defaultStart: new Date(a.startTime).toLocaleTimeString("en-NZ", { hour: '2-digit', minute: '2-digit', hour12: false }),
-        defaultEnd: new Date(a.endTime).toLocaleTimeString("en-NZ", { hour: '2-digit', minute: '2-digit', hour12: false }),
-      }))
+      .map((a: any) => {
+        const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+        const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+        const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+
+        return {
+          assignmentId: a.id,
+          label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}`,
+          startIso: a.startTime.toISOString(),
+          defaultStart: startStr,
+          defaultEnd: endStr,
+        };
+      })
   );
 
   return (
@@ -150,7 +150,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             </Link>
 
             <span className="text-xs text-slate-400 font-mono font-medium px-2 hidden sm:inline">
-              {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
+              {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
 
             <Link
@@ -166,7 +166,7 @@ export default async function HomePage({ searchParams }: PageProps) {
           <div className="flex justify-between items-center px-1">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Operational Roster</h2>
             <span className="text-xs text-slate-400 font-mono">
-              Window: {startDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short' })} - {endDate.toLocaleDateString("en-NZ", { day: 'numeric', month: 'short', year: 'numeric' })}
+              Window: {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           </div>
           <RosterGrid
