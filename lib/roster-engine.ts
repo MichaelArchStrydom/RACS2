@@ -1,4 +1,5 @@
 import { db } from './db'
+import { toZonedTime } from 'date-fns-tz'
 
 export async function generateRosterForDateRange(startDate: Date, daysToGenerate: number) {
   const crews = await db.crew.findMany({
@@ -23,6 +24,7 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
     currentDay.setDate(startDate.getDate() + i)
     currentDay.setHours(0, 0, 0, 0)
 
+    const dateStr = currentDay.toISOString().split('T')[0]
     const dayTimestamp = currentDay.getTime()
     const dayIndex = Math.floor(dayTimestamp / (1000 * 60 * 60 * 24))
 
@@ -34,16 +36,17 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
 
     const isWeekend = currentDay.getDay() === 0 || currentDay.getDay() === 6
 
-    const shiftStart = new Date(currentDay)
-    if (isWeekend) {
-      shiftStart.setHours(7, 0, 0, 0) // Weekends start at 07:00
-    } else {
-      shiftStart.setHours(17, 30, 0, 0) // Weekdays start at 17:30
-    }
+    const startHour = isWeekend ? 7 : 17
+    const startMinute = isWeekend ? 0 : 30
+    const shiftStart = toZonedTime(
+      `${dateStr} ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`,
+      'Pacific/Auckland'
+    )
 
-    const shiftEnd = new Date(currentDay)
-    shiftEnd.setDate(currentDay.getDate() + 1) // Both configurations wrap to the next morning
-    shiftEnd.setHours(7, 0, 0, 0) // Both end at 07:00 the following day
+    const nextDay = new Date(currentDay)
+    nextDay.setDate(nextDay.getDate() + 1)
+    const nextDayStr = nextDay.toISOString().split('T')[0]
+    const shiftEnd = toZonedTime(`${nextDayStr} 07:00:00`, 'Pacific/Auckland')
 
     // Helper function to pull the right people for the seats
     const assignTruckLineup = async (crew: any, applianceName: string) => {
@@ -64,12 +67,12 @@ export async function generateRosterForDateRange(startDate: Date, daysToGenerate
         return null
       }
 
-      const lineup = [// REMOVED ISDRIVER AND isOfficer FROM HERE TO RELY ON SCALABLE QUALIFICATIONS
+      const lineup = [
         { role: 'OIC', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')) || extract(() => true) },
         { role: 'Driver', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')) || extract(() => true) },
         { role: 'FF1', member: extract(() => true) },
         { role: 'FF2', member: extract(() => true) },
-        { role: 'FF3', member: extract(() => true) } // <-- ADD THIS SEAT
+        { role: 'FF3', member: extract(() => true) }
       ].filter(item => item.member !== null)
 
       // Create assignments for this specific truck
