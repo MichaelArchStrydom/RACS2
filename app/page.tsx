@@ -3,6 +3,7 @@ import RosterGrid from '@/components/roster/RosterGrid'
 import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
 import { requireMember } from '@/lib/auth'
+import { logoutAction } from './actions/authActions'
 //NOTE:
 //removed. may be useul later
 //import UserSelector from '@/components/roster/UserSelector'
@@ -115,12 +116,16 @@ export default async function HomePage({ searchParams }: PageProps) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
                 <span className="text-xs font-bold text-slate-700">{currentMember.firstName} {currentMember.lastName}</span>
               </div>
-              <a
-                href="/api/auth/logout"
-                className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
-              >
-                Sign Out
-              </a>
+
+              {/* Replace the <a> tag with this <form> using your existing logoutAction */}
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
+                >
+                  Sign Out
+                </button>
+              </form>
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
