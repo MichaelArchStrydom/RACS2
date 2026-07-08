@@ -122,3 +122,20 @@ export function nzMidnightUTC(dateStr: string): Date {
   const guess = new Date(Date.UTC(y, m - 1, d))
   return setNZHours(guess, 0, 0)
 }
+
+/**
+ * Best-effort normalisation for a manually-typed "HH:MM" time field: if the
+ * user only typed the hour ("7" or "17"), pad it and append ":00" so they
+ * don't have to type the full "07:00". Anything else — already has a colon,
+ * empty, or not a valid 0-23 hour — is left untouched.
+ */
+export function normalizeTimeInput(raw: string): string {
+  const trimmed = raw.trim()
+  if (/^\d{1,2}$/.test(trimmed)) {
+    const hour = parseInt(trimmed, 10)
+    if (hour >= 0 && hour <= 23) {
+      return `${trimmed.padStart(2, '0')}:00`
+    }
+  }
+  return raw
+}

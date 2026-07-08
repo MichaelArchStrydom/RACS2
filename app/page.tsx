@@ -90,7 +90,6 @@ export default async function HomePage({ searchParams }: PageProps) {
           assignmentId: a.id,
           label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}`,
           startIso: a.startTime.toISOString(),
-          endIso: a.endTime.toISOString(),
           defaultStart: startStr,
           defaultEnd: endStr,
         };

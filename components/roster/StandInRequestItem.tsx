@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptStandInRequest } from '@/app/actions/rosterActions'
-import { formatNZTime } from '@/lib/timezone'
+import { formatNZTime, normalizeTimeInput } from '@/lib/timezone'
 
 interface StandInRequestItemProps {
   request: any
@@ -19,15 +19,6 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
 
   const [coverStart, setCoverStart] = useState(defaultStart)
   const [coverEnd, setCoverEnd] = useState(defaultEnd)
-
-  // Quick-pick presets for the mobile chips: whole shift, or split at the
-  // midpoint. Desktop keeps direct entry, no presets shown.
-  const mid = new Date((new Date(request.startTime).getTime() + new Date(request.endTime).getTime()) / 2)
-  const presets = {
-    whole: { start: defaultStart, end: defaultEnd },
-    first: { start: defaultStart, end: formatNZTime(mid) },
-    second: { start: formatNZTime(mid), end: defaultEnd },
-  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,39 +51,16 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
 
       {request.status === "PENDING" ? (
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 bg-slate-50 p-3 rounded-lg border w-full md:w-auto">
-          {/* Quick-pick presets — mobile only. Desktop keeps direct entry. */}
-          <div className="flex md:hidden gap-2">
-            <button
-              type="button"
-              onClick={() => { setCoverStart(presets.whole.start); setCoverEnd(presets.whole.end) }}
-              className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              Whole Shift
-            </button>
-            <button
-              type="button"
-              onClick={() => { setCoverStart(presets.first.start); setCoverEnd(presets.first.end) }}
-              className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              First Half
-            </button>
-            <button
-              type="button"
-              onClick={() => { setCoverStart(presets.second.start); setCoverEnd(presets.second.end) }}
-              className="flex-1 py-2 text-xs font-semibold rounded-lg border bg-white text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              Second Half
-            </button>
-          </div>
-
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-semibold text-slate-500">Fulfill From:</span>
-              {/* Desktop: compact free-text entry, unchanged */}
+              {/* Desktop: compact free-text entry. Typing just an hour
+                  ("7" or "17") and blurring auto-formats to "HH:00". */}
               <input
                 type="text"
                 value={coverStart}
                 onChange={e => setCoverStart(e.target.value)}
+                onBlur={e => setCoverStart(normalizeTimeInput(e.target.value))}
                 className="hidden md:block bg-white border rounded px-2 py-1 w-16 text-center font-mono text-xs"
               />
               {/* Mobile: native time picker */}
@@ -110,6 +78,7 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
                 type="text"
                 value={coverEnd}
                 onChange={e => setCoverEnd(e.target.value)}
+                onBlur={e => setCoverEnd(normalizeTimeInput(e.target.value))}
                 className="hidden md:block bg-white border rounded px-2 py-1 w-16 text-center font-mono text-xs"
               />
               <input

@@ -3,20 +3,14 @@
 import { useState, useTransition } from 'react'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
 import { createStandInRequest } from '@/app/actions/rosterActions'
+import { normalizeTimeInput } from '@/lib/timezone'
 
 interface UserShift {
   assignmentId: string
   label: string       // display string for the dropdown option
   startIso: string    // ISO string — used to reconstruct the Date on submit
-  endIso: string       // ISO string — used to compute quick-pick presets
   defaultStart: string // "HH:MM" pre-filled in the From input
   defaultEnd: string   // "HH:MM" pre-filled in the Until input
-}
-
-// "HH:MM" in NZ time for a given instant, independent of the viewer's own
-// browser timezone — used for the quick-pick preset labels below.
-function nzTimeStr(date: Date): string {
-  return date.toLocaleTimeString('en-NZ', { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 interface RequestsBoardProps {
@@ -37,21 +31,6 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
 
   const selectedShift = userShifts.find(s => s.assignmentId === selectedShiftId)
-
-  // Quick-pick presets for the mobile chips: whole shift, or split at the
-  // midpoint. Only used to prefill coverStart/coverEnd — submission still
-  // goes through the same string fields as manual entry.
-  const presets = (() => {
-    if (!selectedShift) return null
-    const start = new Date(selectedShift.startIso)
-    const end = new Date(selectedShift.endIso)
-    const mid = new Date((start.getTime() + end.getTime()) / 2)
-    return {
-      whole: { start: selectedShift.defaultStart, end: selectedShift.defaultEnd },
-      first: { start: selectedShift.defaultStart, end: nzTimeStr(mid) },
-      second: { start: nzTimeStr(mid), end: selectedShift.defaultEnd },
-    }
-  })()
 
   const handleShiftSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value
@@ -146,53 +125,54 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
             ))}
           </select>
 
-          {selectedShiftId && presets && (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-semibold text-slate-500">Cover From:</span>
-                  {/* Desktop: compact free-text entry, unchanged */}
-                  <input
-                    type="text"
-                    value={coverStart}
-                    onChange={e => setCoverStart(e.target.value)}
-                    required
-                    className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
-                  />
-                  {/* Mobile: native time picker */}
-                  <input
-                    type="time"
-                    value={coverStart}
-                    onChange={e => setCoverStart(e.target.value)}
-                    required
-                    className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-semibold text-slate-500">Cover Until:</span>
-                  <input
-                    type="text"
-                    value={coverEnd}
-                    onChange={e => setCoverEnd(e.target.value)}
-                    required
-                    className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
-                  />
-                  <input
-                    type="time"
-                    value={coverEnd}
-                    onChange={e => setCoverEnd(e.target.value)}
-                    required
-                    className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
-                >
-                  {isCreating ? 'Posting…' : 'Post Request'}
-                </button>
+          {selectedShiftId && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold text-slate-500">Cover From:</span>
+                {/* Desktop: compact free-text entry. Typing just an hour
+                    ("7" or "17") and blurring auto-formats to "HH:00". */}
+                <input
+                  type="text"
+                  value={coverStart}
+                  onChange={e => setCoverStart(e.target.value)}
+                  onBlur={e => setCoverStart(normalizeTimeInput(e.target.value))}
+                  required
+                  className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+                />
+                {/* Mobile: native time picker */}
+                <input
+                  type="time"
+                  value={coverStart}
+                  onChange={e => setCoverStart(e.target.value)}
+                  required
+                  className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
+                />
               </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold text-slate-500">Cover Until:</span>
+                <input
+                  type="text"
+                  value={coverEnd}
+                  onChange={e => setCoverEnd(e.target.value)}
+                  onBlur={e => setCoverEnd(normalizeTimeInput(e.target.value))}
+                  required
+                  className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+                />
+                <input
+                  type="time"
+                  value={coverEnd}
+                  onChange={e => setCoverEnd(e.target.value)}
+                  required
+                  className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+              >
+                {isCreating ? 'Posting…' : 'Post Request'}
+              </button>
             </div>
           )}
         </form>
