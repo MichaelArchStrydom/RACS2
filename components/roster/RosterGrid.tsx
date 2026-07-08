@@ -35,7 +35,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
       <table className="w-full min-w-327.5 table-fixed border-collapse">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
-            <th className="p-3 text-left w-15 border-r">Seat</th>
+            <th className="p-3 text-left w-14 border-r">Seat</th>
             {days.map(({ date, dateKey, dayStr, isWeekend }) => (
               <th key={dateKey} className={`p-2 text-center border-r font-medium ${isWeekend ? 'bg-slate-100/50' : ''}`}>
                 {dayStr}
@@ -71,7 +71,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                     const slotRequests = matchingSlot?.requests || [];
 
                     return (
-                      <td key={dateKey} className="p-1 border-r align-top min-w-35">
+                      <td key={dateKey} className="p-1 border-r align-top min-w-30">
                         {roleAssignments.length > 0 ? (
                           <RosterCell
                             assignments={roleAssignments}
