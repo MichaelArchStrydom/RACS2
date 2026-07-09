@@ -48,11 +48,11 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
           <input type="hidden" name="adminId" value={userId} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-slate-500">Title</label>
-            <input name="title" required placeholder="e.g. Station BBQ Saturday" className="border rounded-lg px-3 py-2 text-sm" />
+            <input name="title" required placeholder="e.g. Matariki Friday 10th July" className="text-black border rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-slate-500">Body</label>
-            <textarea name="body" required rows={4} placeholder="Details for members…" className="border rounded-lg px-3 py-2 text-sm" />
+            <textarea name="body" required rows={4} placeholder="Details for members…" className="text-black border rounded-lg px-3 py-2 text-sm" />
           </div>
           <button type="submit" className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold rounded-lg">Post Announcement</button>
         </form>
@@ -83,7 +83,8 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-slate-500">Body</label>
-                  <textarea name="body" defaultValue={a.body} rows={3} className="border rounded-lg px-3 py-2 text-sm" />
+                  <textarea name="body" defaultValue={a.body} rows={3} className="text-black border rounded-lg px-3 py-2 text-sm" />
+
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-slate-400 font-mono">
