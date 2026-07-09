@@ -13,6 +13,7 @@ const navItems = [
   { href: '/admin/crews', label: 'Crews', icon: '👥' },
   { href: '/admin/appliances', label: 'Appliances', icon: '🚒' },
   { href: '/admin/holidays', label: 'Public Holidays', icon: '📅' },
+  { href: '/admin/announcements', label: 'Announcements', icon: '📢' },
   { href: '/admin/leave', label: 'Leave', icon: '🏖️' },
   { href: '/admin/roster', label: 'Roster Tools', icon: '⚙️' },
 ]

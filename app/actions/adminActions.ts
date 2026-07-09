@@ -305,3 +305,38 @@ export async function addHourAdjustment(adminId: string, memberId: string, hours
   })
   revalidatePath(`/admin/members/${memberId}`)
 }
+
+export async function createAnnouncement(adminId: string, data: {
+  title: string
+  body: string
+}) {
+  await requireAdmin(adminId)
+
+  await db.announcement.create({
+    data: { ...data, createdById: adminId }
+  })
+  revalidatePath('/admin/announcements')
+  revalidatePath('/')
+}
+
+export async function updateAnnouncement(adminId: string, announcementId: string, data: {
+  title?: string
+  body?: string
+}) {
+  await requireAdmin(adminId)
+
+  await db.announcement.update({
+    where: { id: announcementId },
+    data: { ...data, updatedById: adminId }
+  })
+  revalidatePath('/admin/announcements')
+  revalidatePath('/')
+}
+
+export async function deleteAnnouncement(adminId: string, announcementId: string) {
+  await requireAdmin(adminId)
+  await db.announcement.update({ where: { id: announcementId }, data: { isActive: false } })
+  revalidatePath('/admin/announcements')
+  revalidatePath('/')
+}
+

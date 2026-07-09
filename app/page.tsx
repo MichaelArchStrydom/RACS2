@@ -6,6 +6,10 @@ import { requireMember } from '@/lib/auth'
 import { logoutAction } from './actions/authActions'
 import { todayNZDateString, addDaysToDateString, nzMidnightUTC } from '@/lib/timezone'
 import LiveRefresher from '@/components/LiveRefresher'
+import { AnnouncementsProvider } from '@/components/announcements/AnnouncementsContext'
+import AnnouncementsButton from '@/components/announcements/AnnouncementsButton'
+import AnnouncementsPreview from '@/components/announcements/AnnouncementsPreview'
+import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
 //NOTE:
 //removed. may be useul later
 //import UserSelector from '@/components/roster/UserSelector'
@@ -41,7 +45,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   const nextLink = `/?date=${addDaysToDateString(baseDateStr, 7)}`;
 
   //Simultaneous execusion optimised for vercels slow performance
-  const [activeSlots, standInRequests, allMembers, activeAppliances] = await Promise.all([
+  const [activeSlots, standInRequests, allMembers, activeAppliances, allAnnouncements] = await Promise.all([
     db.shiftSlot.findMany({
       where: { date: { gte: startDate, lt: endDate } },
       include: {
@@ -63,6 +67,11 @@ export default async function HomePage({ searchParams }: PageProps) {
       where: { isActive: true },
       orderBy: { displayOrder: 'asc' },
       select: { name: true }
+    }),
+    db.announcement.findMany({
+      where: { isActive: true },
+      include: { receipts: { where: { memberId: activeUserId } } },
+      orderBy: { createdAt: 'desc' },
     })
   ]);
 
@@ -99,9 +108,16 @@ export default async function HomePage({ searchParams }: PageProps) {
       })
   );
 
+  // An announcement is unread if this member has no receipt for it yet,
+  // or has a receipt but hasn't set readAt on it.
+  const unreadAnnouncementsCount = allAnnouncements.filter(
+    (a) => a.receipts.length === 0 || a.receipts[0].readAt === null
+  ).length;
+
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
       <LiveRefresher />
+      <AnnouncementsProvider>
       <div className="max-w-7xl mx-auto space-y-6">
 
         <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -135,6 +151,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start md:self-center">
+            <AnnouncementsButton unreadCount={unreadAnnouncementsCount} />
             {/* ADMIN PORTAL BRIDGE LINK */}
             {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
               <Link
@@ -164,6 +181,8 @@ export default async function HomePage({ searchParams }: PageProps) {
           </div>
         </header>
 
+        <AnnouncementsPreview latest={allAnnouncements[0] ?? null} />
+
         <section className="space-y-2">
           <div className="flex justify-between items-center px-1">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Operational Roster</h2>
@@ -186,6 +205,8 @@ export default async function HomePage({ searchParams }: PageProps) {
         />
 
       </div>
+      <AnnouncementsPanel announcements={allAnnouncements} activeUserId={activeUserId} />
+      </AnnouncementsProvider>
     </main>
   );
 }

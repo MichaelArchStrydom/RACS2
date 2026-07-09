@@ -62,6 +62,8 @@ model Member {
   leaveRecords   MemberLeave[]
   hourLedger     HourLedgerEntry[]
   sessions       Session[]
+
+  announcementReceipts AnnouncementReceipt[]
 }
 
 //SESSION
@@ -345,6 +347,48 @@ model RosterChangeSet {
 
   // Draft ShiftSlots that belong to this change set
   draftSlots ShiftSlot[]
+}
+
+// ANNOUNCEMENTS
+// Admin-authored notices shown to all members.
+//
+// Read/archived state is tracked PER-MEMBER via AnnouncementReceipt, not on
+// Announcement itself — one announcement, many members, each with their own
+// independent read/archived state (the same shape as MemberQualification).
+//
+// The absence of a receipt row is the default state: "unread, not archived".
+// Creating an announcement does NOT fan out a row to every member — a
+// receipt only gets created the first time a given member interacts with
+// that announcement (marks it read, or archives it).
+// TODO: Add a way to target anoncements to certain members
+model Announcement {
+  id    String @id @default(uuid())
+  title String
+  body  String
+
+  isActive Boolean @default(true) // soft-delete, consistent with Crew/Qualification
+
+  createdById String // Member.id of the admin who created this
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  receipts AnnouncementReceipt[]
+}
+
+model AnnouncementReceipt {
+  id             String       @id @default(uuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  // Nullable timestamps rather than booleans: null means "hasn't happened".
+  // Lets the UI show "read 2h ago" later without an extra column.
+  readAt     DateTime?
+  archivedAt DateTime?
+
+  @@unique([announcementId, memberId])
 }
 
 // SYSTEM CONFIG
