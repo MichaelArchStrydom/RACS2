@@ -49,7 +49,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
-    <div className="min-h-screen bg-slate-100 flex">
+    <div className="h-screen bg-slate-100 flex">
       <aside
         className={`bg-slate-900 text-white flex flex-col shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? 'w-56' : 'w-12'
           }`}
