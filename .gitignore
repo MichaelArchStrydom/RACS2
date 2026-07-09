@@ -48,3 +48,7 @@ lib/db-local.ts
 sillyrefs/cmdcheatsheet.md
 
 prisma/seed.ts
+
+.claude
+CLAUDE.md
+AGENTS.md
