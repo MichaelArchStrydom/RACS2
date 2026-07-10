@@ -36,7 +36,6 @@ export default function RosterShell({
   const savedScrollY = useRef(0)
   const isNavigating = useRef(false)
 
-  // ── Scroll preservation ──────────────────────────────────────────────────
   // Save scroll before any refresh/navigation, restore after
   const saveScroll = useCallback(() => {
     savedScrollY.current = window.scrollY
@@ -51,7 +50,6 @@ export default function RosterShell({
     }
   }, [])
 
-  // ── Background polling ───────────────────────────────────────────────────
   useEffect(() => {
     const poll = () => {
       // Don't poll while user is mid-navigation or page is hidden
@@ -66,7 +64,6 @@ export default function RosterShell({
     return () => clearInterval(id)
   }, [router, saveScroll, restoreScroll])
 
-  // ── Restore scroll after router.refresh() from child components ──────────
   // Children call router.refresh() directly; we watch for the resulting
   // re-render via a MutationObserver on the roster container.
   const containerRef = useRef<HTMLDivElement>(null)
@@ -80,7 +77,6 @@ export default function RosterShell({
     return () => obs.disconnect()
   }, [restoreScroll])
 
-  // ── Date navigation: push without scroll reset ───────────────────────────
   const navigate = useCallback((href: string) => {
     saveScroll()
     isNavigating.current = true

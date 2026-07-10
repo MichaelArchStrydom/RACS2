@@ -13,15 +13,7 @@ interface RosterGridProps {
 export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
   const roles = ["OIC", "Driver", "FF1", "FF2", "FF3"];
 
-  // Derive the NZ calendar date key and weekday for each visible date ONCE,
-  // using explicit timeZone formatting rather than local getters.
-  //
-  // FIX: date.getFullYear()/getMonth()/getDate()/getDay() read the date in
-  // whichever timezone the JS engine happens to be running in — the Vercel
-  // server (UTC) during SSR, then the user's own browser (NZ) after
-  // hydration. Those two can disagree on the calendar day, which produced a
-  // dateKey that didn't match groupedData's NZ-explicit keys from page.tsx,
-  // showing "No Assignment" until the client re-render corrected it.
+
   const days = visibleDates.map((date) => {
     const dateKey = date.toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
     const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });

@@ -19,6 +19,8 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  //TODO: Merge cells with same name and status.
+
   const sortedAssignments = [...assignments].sort((a, b) =>
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   )
