@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { hashPassword, revokeAllSessionsForMember } from '@/lib/auth'
 
 // ─── AUTH GUARD ───────────────────────────────────────────────────────────────
 // Every action calls this first. Pass the activeUserId from the form.
@@ -59,18 +60,38 @@ export async function addMember(adminId: string, data: {
     counter++
   }
 
-  // 3. Create the member record including the generated username
+  // 3. Create the member record including the generated username.
+  // FIX: was a literal placeholder string, not a real bcrypt hash — new
+  // members could never actually log in. Hash the same documented default
+  // password shown on the login page ("changeme123").
+  const defaultHash = await hashPassword('changeme123')
   await db.member.create({
     data: {
       ...data,
       username,
-      password: 'hashed_password_placeholder', // FIX: Change this to a real bcrypt
+      password: defaultHash,
       isActive: true,
       isAdmin: false,
     }
   })
 
   revalidatePath('/admin/members')
+}
+
+export async function resetMemberPassword(adminId: string, memberId: string, newPassword: string) {
+  await requireAdmin(adminId)
+  if (newPassword.length < 8) throw new Error('New password must be at least 8 characters.')
+
+  const hash = await hashPassword(newPassword)
+  await db.member.update({
+    where: { id: memberId },
+    data: { password: hash, passwordUpdatedAt: new Date() },
+  })
+
+  // Force the member to re-authenticate everywhere with the new password —
+  // same security practice as when a member changes their own password.
+  await revokeAllSessionsForMember(memberId)
+  revalidatePath(`/admin/members/${memberId}`)
 }
 
 export async function deactivateMember(adminId: string, memberId: string) {
@@ -117,6 +138,38 @@ export async function setMemberQualification(adminId: string, memberId: string, 
   }
 
   revalidatePath(`/admin/members/${memberId}`)
+}
+
+export async function createQualification(adminId: string, data: {
+  key: string
+  name: string
+  description?: string
+  affectsRostering: boolean
+  enabledRoles: string[]
+}) {
+  await requireAdmin(adminId)
+
+  const key = data.key.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+  if (!key) throw new Error('A machine key is required.')
+
+  await db.qualification.create({
+    data: {
+      key,
+      name: data.name,
+      description: data.description || null,
+      affectsRostering: data.affectsRostering,
+      enabledRoles: data.enabledRoles,
+      isActive: true,
+    }
+  })
+
+  revalidatePath('/admin/qualifications')
+}
+
+export async function setQualificationActive(adminId: string, qualificationId: string, isActive: boolean) {
+  await requireAdmin(adminId)
+  await db.qualification.update({ where: { id: qualificationId }, data: { isActive } })
+  revalidatePath('/admin/qualifications')
 }
 
 // ─── CREWS ────────────────────────────────────────────────────────────────────

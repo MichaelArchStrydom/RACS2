@@ -5,6 +5,7 @@ import { ALREADY_ACTIONED } from '@/lib/errors'
 import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/Spinner'
+import { useRosterInteraction } from './RosterInteractionContext'
 
 
 interface RosterCellProps {
@@ -18,16 +19,96 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   const [isPending, startTransition] = useTransition()
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { requestCoverFor, scrollToRequest } = useRosterInteraction()
 
-  //TODO: Merge cells with same name and status.
+  function getStatus(assignment: any) {
+    const isCovered = !!assignment.actualMember
+    const start = new Date(assignment.startTime).getTime()
+    const end = new Date(assignment.endTime).getTime()
+    const isRequested = slotRequests.some(r => {
+      if (r.requestedById !== assignment.memberId || r.status !== 'PENDING') return false
+      const reqStart = new Date(r.startTime).getTime()
+      const reqEnd = new Date(r.endTime).getTime()
+      return reqStart < end && reqEnd > start
+    })
+    return { isCovered, isRequested }
+  }
 
-  const sortedAssignments = [...assignments].sort((a, b) =>
-    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-  )
+  function mergeAdjacent(list: any[]): any[] {
+    const byStart = [...list].sort((a, b) =>
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    )
+    return byStart.reduce<any[]>((acc, current) => {
+      const currentOwner = current.actualMemberId ?? current.memberId
+      const last = acc[acc.length - 1]
+
+      const sameOwner = last && (last.actualMemberId ?? last.memberId) === currentOwner
+      const isContiguous = last && new Date(last.endTime).getTime() === new Date(current.startTime).getTime()
+
+      const currentStatus = getStatus(current)
+      const lastStatus = last ? getStatus(last) : null
+      const sameStatus = lastStatus
+        ? lastStatus.isCovered === currentStatus.isCovered && lastStatus.isRequested === currentStatus.isRequested
+        : false
+
+      if (sameOwner && isContiguous && sameStatus) {
+        last.endTime = current.endTime
+      } else {
+        acc.push({ ...current })
+      }
+
+      return acc
+    }, [] as any[])
+  }
+
+  const sortedAssignments = mergeAdjacent(assignments)
+
+
+  function splitByRequests(assignment: any): any[] {
+    const assignStart = new Date(assignment.startTime).getTime()
+    const assignEnd = new Date(assignment.endTime).getTime()
+
+    const overlapping = slotRequests.filter(r =>
+      r.status === 'PENDING' &&
+      r.requestedById === assignment.memberId &&
+      new Date(r.startTime).getTime() < assignEnd &&
+      new Date(r.endTime).getTime() > assignStart
+    )
+    if (overlapping.length === 0) return [assignment]
+
+    const points = new Set<number>([assignStart, assignEnd])
+    overlapping.forEach(r => {
+      points.add(Math.max(assignStart, new Date(r.startTime).getTime()))
+      points.add(Math.min(assignEnd, new Date(r.endTime).getTime()))
+    })
+    const sortedPoints = [...points].sort((a, b) => a - b)
+
+    const pieces: any[] = []
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+      const pieceStart = sortedPoints[i]
+      const pieceEnd = sortedPoints[i + 1]
+      if (pieceStart >= pieceEnd) continue
+
+      const matchedRequest = overlapping.find(r =>
+        new Date(r.startTime).getTime() <= pieceStart && new Date(r.endTime).getTime() >= pieceEnd
+      ) ?? null
+
+      pieces.push({
+        ...assignment,
+        startTime: new Date(pieceStart),
+        endTime: new Date(pieceEnd),
+        _matchedRequest: matchedRequest,
+      })
+    }
+    return pieces
+  }
+
+  const splitSlices = sortedAssignments.flatMap(splitByRequests)
+  const displaySlices = mergeAdjacent(splitSlices)
 
   return (
     <div className="w-full h-full flex flex-col gap-1">
-      {sortedAssignments.map((assignment) => {
+      {displaySlices.map((assignment) => {
         const isCovered = !!assignment.actualMember;
 
         const assignmentStart = new Date(assignment.startTime).getTime()
@@ -60,16 +141,26 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         }
 
         const isActiveMember = activeMember.id === activeUserId
-        const currentRequest = slotRequests.find(r => r.status === 'PENDING' && r.requestedById === assignment.memberId);
+        const currentRequest = assignment._matchedRequest ?? null
 
         const closePicker = () => {
           setShowTimePicker(null)
           setError(null)
         }
 
+        const handleCellTap = () => {
+          if (!window.matchMedia('(pointer: coarse)').matches) return
+          if (isRequested && currentRequest) {
+            scrollToRequest(currentRequest.id)
+          } else if (isActiveMember && !isRequested) {
+            requestCoverFor(assignment.id)
+          }
+        }
+
         return (
           <div
-            key={assignment.id}
+            key={`${assignment.id}-${assignment.startTime}`}
+            onClick={handleCellTap}
             className={`group relative flex flex-col justify-center px-1.5 py-1 rounded border text-[11px] transition-all shadow-sm ${cellStyles}`}
           >
             <div className="flex items-center justify-between gap-1">
@@ -79,7 +170,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
             {/* FORM 1: REQUEST COVER */}
             {!isRequested && isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
@@ -138,7 +229,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
             {/* FORM 2: PICK UP COVER */}
             {isRequested && currentRequest && !isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
@@ -186,7 +277,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
             {/* FORM 3: RETRACT COVER FOR YOURSELF */}
             {isRequested && currentRequest && isActiveMember && (
-              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-10">
+              <div className="absolute inset-0 bg-slate-900/95 text-white rounded p-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity flex flex-col items-center justify-center gap-1 z-10">
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}

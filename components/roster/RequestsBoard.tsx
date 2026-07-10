@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
 import { createStandInRequest } from '@/app/actions/rosterActions'
 import { normalizeTimeInput } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
+import { useRosterInteraction } from '@/components/roster/RosterInteractionContext'
 
 interface UserShift {
   assignmentId: string
@@ -30,6 +31,9 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
   const [coverEnd, setCoverEnd] = useState('')
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
+  const { pendingShiftAssignmentId, pendingScrollRequestId, clearPendingShift, clearPendingScroll } = useRosterInteraction()
+  const createFormRef = useRef<HTMLFormElement>(null)
+  const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
   const filteredRequests = requests.filter(req => showCovered || req.status === 'PENDING')
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
@@ -48,6 +52,47 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
       setCoverEnd('')
     }
   }
+
+  // Mobile tap on your own uncovered cell (RosterCell) sets this — open the
+  // create form pre-selected to that exact shift. The actual scroll is
+  // handled by a SEPARATE effect below, keyed off scrollToFormTrigger —
+  // setShowCreateForm(true) here only *schedules* a re-render, it doesn't put
+  // the form in the DOM synchronously, so the form's ref is still null at
+  // this point. A single requestAnimationFrame isn't reliably after React's
+  // commit either (it's not React-aware), which is why the first tap looked
+  // like it did nothing. A second effect that depends on the trigger value
+  // is guaranteed to run after React has committed the form to the DOM —
+  // React always commits before running effects for that render.
+  useEffect(() => {
+    if (!pendingShiftAssignmentId) return
+    const shift = userShifts.find(s => s.assignmentId === pendingShiftAssignmentId)
+    if (shift) {
+      setShowCreateForm(true)
+      setSelectedShiftId(shift.assignmentId)
+      setCoverStart(shift.defaultStart)
+      setCoverEnd(shift.defaultEnd)
+      setScrollToFormTrigger(n => n + 1)
+    }
+    clearPendingShift()
+  }, [pendingShiftAssignmentId, userShifts, clearPendingShift])
+
+  // Only fires when the trigger above actually bumps (i.e. only for the
+  // mobile-tap flow) — not on every render, and not when a shift is simply
+  // picked from the dropdown during a manually-opened form.
+  useEffect(() => {
+    if (scrollToFormTrigger === 0) return
+    createFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [scrollToFormTrigger])
+
+  // Mobile tap on a cell that already has a pending request (yours or
+  // someone else's) sets this — scroll straight to that request's existing
+  // accept/retract form instead of making them scan the whole list.
+  useEffect(() => {
+    if (!pendingScrollRequestId) return
+    const el = document.getElementById(`request-${pendingScrollRequestId}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    clearPendingScroll()
+  }, [pendingScrollRequestId, clearPendingScroll])
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -118,6 +163,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
       {/* Create-request inline form */}
       {showCreateForm && (
         <form
+          ref={createFormRef}
           onSubmit={handleCreateSubmit}
           className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col gap-3"
         >
@@ -202,11 +248,12 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 divide-y divide-slate-100">
           {filteredRequests.map((request) => (
-            <StandInRequestItem
-              key={request.id}
-              request={request}
-              activeUserId={activeUserId}
-            />
+            <div key={request.id} id={`request-${request.id}`}>
+              <StandInRequestItem
+                request={request}
+                activeUserId={activeUserId}
+              />
+            </div>
           ))}
         </div>
       )}

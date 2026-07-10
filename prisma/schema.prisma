@@ -17,6 +17,7 @@ model Member {
   firstName         String
   lastName          String
   email             String? //Made emails optional. Chris seemed apprehensive to make them the key identifier
+  phone             String? // optional contact number, editable by the member themselves
   //login attributes:
   username          String    @unique
   password          String //Hashed Passwords

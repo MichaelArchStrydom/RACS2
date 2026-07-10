@@ -10,6 +10,7 @@ interface AdminLayoutProps {
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '📊' },
   { href: '/admin/members', label: 'Members', icon: '🧑‍🚒' },
+  { href: '/admin/qualifications', label: 'Qualifications', icon: '🎓' },
   { href: '/admin/crews', label: 'Crews', icon: '👥' },
   { href: '/admin/appliances', label: 'Appliances', icon: '🚒' },
   { href: '/admin/holidays', label: 'Public Holidays', icon: '📅' },

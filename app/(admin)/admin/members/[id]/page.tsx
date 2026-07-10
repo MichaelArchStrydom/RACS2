@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment } from '@/app/actions/adminActions'
+import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 
 interface PageProps {
@@ -117,7 +117,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
               <select name="zoneType" defaultValue={member.zoneType} className="border rounded-lg px-3 py-2 text-sm">
                 <option value="GREEN">Green Zone (normal)</option>
                 <option value="RED">Red Zone (1st Due only)</option>
-                [118;1:3u               <option value="SUBSTITUTE">Substitute (visitor)</option>
+                <option value="SUBSTITUTE">Substitute (visitor)</option>
               </select>
             </div>
 
@@ -154,6 +154,32 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
               </button>
             </form>
           )}
+        </section>
+
+        {/* ── Reset password ── */}
+        <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">Reset Password</h2>
+          <p className="text-xs text-slate-400">
+            Sets a new password directly — the member isn't asked for their current one. This signs them out
+            everywhere; they'll need the new password to log back in.
+          </p>
+          <form
+            action={async (fd: FormData) => {
+              'use server'
+              await resetMemberPassword(fd.get('adminId') as string, fd.get('memberId') as string, fd.get('newPassword') as string)
+            }}
+            className="flex gap-2 items-end"
+          >
+            <input type="hidden" name="adminId" value={userId} />
+            <input type="hidden" name="memberId" value={memberId} />
+            <div className="flex flex-col gap-1 flex-1">
+              <label className="text-xs font-semibold text-slate-500">New Password</label>
+              <input name="newPassword" type="text" required minLength={8} placeholder="At least 8 characters" className="border rounded-lg px-3 py-2 text-sm font-mono" />
+            </div>
+            <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              Reset Password
+            </button>
+          </form>
         </section>
 
         {/* ── Qualifications ── */}

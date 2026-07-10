@@ -10,7 +10,10 @@ import { AnnouncementsProvider } from '@/components/announcements/AnnouncementsC
 import AnnouncementsButton from '@/components/announcements/AnnouncementsButton'
 import AnnouncementsPreview from '@/components/announcements/AnnouncementsPreview'
 import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
-import Spinner from '@/components/Spinner'
+import { NavMenuProvider } from '@/components/navmenu/NavMenuContext'
+import NavMenuButton from '@/components/navmenu/NavMenuButton'
+import NavMenuPanel from '@/components/navmenu/NavMenuPanel'
+import { RosterInteractionProvider } from '@/components/roster/RosterInteractionContext'
 //NOTE:
 //removed. may be useul later
 //import UserSelector from '@/components/roster/UserSelector'
@@ -118,97 +121,95 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
       <LiveRefresher />
-      <AnnouncementsProvider>
-        <div className="max-w-7xl mx-auto space-y-6">
+      <NavMenuProvider>
+        <AnnouncementsProvider>
+          <div className="max-w-7xl mx-auto space-y-6">
 
-          <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <header className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 w-full">
 
-              {/* Wrapped the dropdown inside Suspense to isolate useSearchParams NOTE: REMOVED ALONG WITH IMPORTS ABOVE. REPLACED WITH LOGOUT BUTTON
+                {/* Wrapped the dropdown inside Suspense to isolate useSearchParams NOTE: REMOVED ALONG WITH IMPORTS ABOVE. REPLACED WITH LOGOUT BUTTON
             <Suspense fallback={
               <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm w-48 h-8 animate-pulse" />
             }>
               <UserSelector members={allMembers} activeUserId={activeUserId} />
             </Suspense>
             */}
-              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
-                  <span className="text-xs font-bold text-slate-700">{currentMember.firstName} {currentMember.lastName}</span>
+                <div className="flex items-center gap-2">
+                  <NavMenuButton />
+                  {/* ADMIN PORTAL BRIDGE LINK */}
+                  {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
+                    <Link
+                      href={`/admin?user=${activeUserId}`}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
+                    >
+                      Admin Portal
+                    </Link>
+                  )}
+                </div>
+                <div className="flex items-center gap-0 bg-slate-50 border border-slate-200 px-3 py-1 rounded-lg">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
+                    <span className="text-xs font-bold text-slate-700">{currentMember.firstName} {currentMember.lastName}</span>
+                  </div>
+
+                  {/* Replace the <a> tag with this <form> using your existing logoutAction */}
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-1 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
+                    >
+                      Sign Out
+                    </button>
+                  </form>
                 </div>
 
-                {/* Replace the <a> tag with this <form> using your existing logoutAction */}
-                <form action={logoutAction}>
-                  <button
-                    type="submit"
-                    className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-100 ml-2"
+              </div>
+            </header>
+
+            <AnnouncementsPreview unreadCount={unreadAnnouncementsCount} latest={allAnnouncements[0] ?? null} />
+
+            <RosterInteractionProvider>
+              <section className="space-y-2">
+                <div className="flex justify-between items-center px-1">
+                  <Link
+                    href={prevLink}
+                    className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
                   >
-                    Sign Out
-                  </button>
-                </form>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-800">Station Roster Board</h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 self-start md:self-center">
-              {/* ADMIN PORTAL BRIDGE LINK */}
-              {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
-                <Link
-                  href={`/admin?user=${activeUserId}`}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
-                >
-                  Admin Portal
-                </Link>
-              )}
-            </div>
-          </header>
+                    ← 7 Days
+                  </Link>
 
-          <AnnouncementsPreview unreadCount={unreadAnnouncementsCount} latest={allAnnouncements[0] ?? null} />
-          {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
-            <Link
-              href={`/admin?user=${activeUserId}`}
-            >
-            </Link>
-          )}
+                  <span className="text-xs text-slate-400 font-mono font-medium px-2 sm:inline">
+                    {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
 
-          <section className="space-y-2">
-            <div className="flex justify-between items-center px-1">
-              <Link
-                href={prevLink}
-                className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
-              >
-                ← 7 Days
-              </Link>
+                  <Link
+                    href={nextLink}
+                    className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
+                  >
+                    7 Days →
+                  </Link>
+                </div>
+                <RosterGrid
+                  groupedData={groupedData}
+                  visibleDates={visibleDates}
+                  activeUserId={activeUserId}
+                  appliances={appliancesArray}
+                />
+              </section>
 
-              <span className="text-xs text-slate-400 font-mono font-medium px-2 sm:inline">
-                {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
+              <RequestsBoard
+                requests={standInRequests}
+                activeUserId={activeUserId}
+                userShifts={userShifts}
+              />
+            </RosterInteractionProvider>
 
-              <Link
-                href={nextLink}
-                className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
-              >
-                7 Days →
-              </Link>
-            </div>
-            <RosterGrid
-              groupedData={groupedData}
-              visibleDates={visibleDates}
-              activeUserId={activeUserId}
-              appliances={appliancesArray}
-            />
-          </section>
-
-          <RequestsBoard
-            requests={standInRequests}
-            activeUserId={activeUserId}
-            userShifts={userShifts}
-          />
-
-        </div>
-        <AnnouncementsPanel announcements={allAnnouncements} activeUserId={activeUserId} />
-      </AnnouncementsProvider>
+          </div>
+          <AnnouncementsPanel announcements={allAnnouncements} activeUserId={activeUserId} />
+        </AnnouncementsProvider>
+        <NavMenuPanel />
+      </NavMenuProvider>
     </main>
   );
 }
