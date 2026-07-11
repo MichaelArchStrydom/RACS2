@@ -3,12 +3,9 @@ import { redirect } from 'next/navigation'
 import { generateRoster, clearRosterRange } from '@/app/actions/adminActions'
 import ClearRosterButton from '@/components/roster/ClearRosterButton'
 import RosterCalendarEditor from '@/components/roster/RosterCalendarEditor'
-import type { MonthSlotsByDate, CalendarSlot } from '@/components/roster/RosterCalendarTypes'
+import { getRosterCalendarSlotsByDate } from '@/lib/roster-calendar-data'
 import { requireAdmin } from '@/lib/auth'
-import {
-  todayNZDateString, nzMidnightUTC, addDaysToDateString,
-  getMonthGridDateStrings, addMonthsToMonthString,
-} from '@/lib/timezone'
+import { todayNZDateString, nzMidnightUTC, addDaysToDateString } from '@/lib/timezone'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; success?: string; error?: string; month?: string }>
@@ -32,46 +29,11 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
   const isValidMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam)
   const monthStr = isValidMonth ? monthParam! : todayStr.slice(0, 7)
 
-  const gridDates = getMonthGridDateStrings(monthStr)
-  const gridStart = nzMidnightUTC(gridDates[0])
-  const gridEnd = nzMidnightUTC(addDaysToDateString(gridDates[gridDates.length - 1], 1))
-
-  const [calendarSlots, calendarCrews, calendarAppliances] = await Promise.all([
-    db.shiftSlot.findMany({
-      where: { date: { gte: gridStart, lt: gridEnd } },
-      include: { assignments: { include: { member: true } } },
-      orderBy: [{ date: 'asc' }, { appliance: 'asc' }],
-    }),
+  const [slotsByDate, calendarCrews, calendarAppliances] = await Promise.all([
+    getRosterCalendarSlotsByDate(monthStr),
     db.crew.findMany({ where: { isActive: true }, orderBy: { crewOrder: 'asc' }, select: { id: true, watchName: true } }),
     db.appliance.findMany({ where: { isActive: true }, orderBy: { displayOrder: 'asc' }, select: { name: true } }),
   ])
-
-  const slotsByDate: MonthSlotsByDate = {}
-  for (const slot of calendarSlots) {
-    const dateKey = new Date(slot.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' })
-    const watchNames = new Set(slot.assignments.map(a => a.historicalWatchName ?? null))
-    const watchName = slot.assignments.length === 0 ? null : (watchNames.size === 1 ? [...watchNames][0] : null)
-
-    const entry: CalendarSlot = {
-      id: slot.id,
-      appliance: slot.appliance,
-      status: slot.status,
-      watchName,
-      assignments: slot.assignments.map(a => ({
-        applianceRole: a.applianceRole,
-        memberName: `${a.member.lastName}, ${a.member.firstName.charAt(0)}.`,
-      })),
-    }
-
-    if (!slotsByDate[dateKey]) slotsByDate[dateKey] = []
-    slotsByDate[dateKey].push(entry)
-  }
-
-  const prevMonthHref = `/admin/roster?user=${userId}&month=${addMonthsToMonthString(monthStr, -1)}`
-  const nextMonthHref = `/admin/roster?user=${userId}&month=${addMonthsToMonthString(monthStr, 1)}`
-  const monthLabel = new Date(`${monthStr}-01T00:00:00Z`).toLocaleDateString('en-NZ', {
-    month: 'long', year: 'numeric', timeZone: 'UTC',
-  })
 
   const [futureSlotCount, lastSlotDate, totalAssignments, pendingRequests, openLeave] = await Promise.all([
     db.shiftSlot.count({ where: { date: { gte: today }, status: 'LIVE' } }),
@@ -136,11 +98,8 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
 
       {/* Visual month calendar */}
       <RosterCalendarEditor
-        monthStr={monthStr}
-        prevMonthHref={prevMonthHref}
-        nextMonthHref={nextMonthHref}
-        monthLabel={monthLabel}
-        slotsByDate={slotsByDate}
+        initialMonthStr={monthStr}
+        initialSlotsByDate={slotsByDate}
         crews={calendarCrews}
         appliances={calendarAppliances}
         adminId={userId}

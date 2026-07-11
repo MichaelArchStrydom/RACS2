@@ -1,20 +1,16 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import { getMonthGridDateStrings } from '@/lib/timezone'
-import { applyRosterCalendarChanges, type RosterCalendarChange } from '@/app/actions/adminActions'
+import { getMonthGridDateStrings, addMonthsToMonthString } from '@/lib/timezone'
+import { applyRosterCalendarChanges, getRosterCalendarMonth, type RosterCalendarChange } from '@/app/actions/adminActions'
 import Spinner from '@/components/Spinner'
 import RosterCalendarDayCell from './RosterCalendarDayCell'
 import RosterCalendarDetailPanel from './RosterCalendarDetailPanel'
 import type { CalendarSlot, MonthSlotsByDate, CrewOption, ApplianceOption } from './RosterCalendarTypes'
 
 interface RosterCalendarEditorProps {
-  monthStr: string // "YYYY-MM" of the month currently being viewed
-  prevMonthHref: string
-  nextMonthHref: string
-  monthLabel: string
-  slotsByDate: MonthSlotsByDate
+  initialMonthStr: string // "YYYY-MM" of the month the page was first loaded with
+  initialSlotsByDate: MonthSlotsByDate
   crews: CrewOption[]
   appliances: ApplianceOption[]
   adminId: string
@@ -56,21 +52,24 @@ function applyOverlay(
 }
 
 export default function RosterCalendarEditor({
-  monthStr,
-  prevMonthHref,
-  nextMonthHref,
-  monthLabel,
-  slotsByDate,
+  initialMonthStr,
+  initialSlotsByDate,
   crews,
   appliances,
   adminId,
   todayStr,
 }: RosterCalendarEditorProps) {
-  const router = useRouter()
+  // Month + slot data are owned client-side from here on — switching months
+  // fetches fresh data in the background instead of navigating the page, so
+  // the selected day, any open mode, and pending edits all survive the switch.
+  const [monthStr, setMonthStr] = useState(initialMonthStr)
+  const [slotsByDate, setSlotsByDate] = useState(initialSlotsByDate)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [pendingChanges, setPendingChanges] = useState<Record<string, RosterCalendarChange[]>>({})
   const [isSaving, startSaving] = useTransition()
+  const [isLoadingMonth, startLoadingMonth] = useTransition()
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const gridDates = useMemo(() => getMonthGridDateStrings(monthStr), [monthStr])
 
@@ -100,6 +99,27 @@ export default function RosterCalendarEditor({
     })
   }
 
+  // Merges freshly-fetched data in rather than replacing state outright, so
+  // months already visited this session stay available — e.g. the detail
+  // panel can still show a previously-selected day's real data even after
+  // navigating to a different month.
+  const refetchMonth = (targetMonthStr: string) => {
+    setLoadError(null)
+    startLoadingMonth(async () => {
+      try {
+        const data = await getRosterCalendarMonth(adminId, targetMonthStr)
+        setSlotsByDate(prev => ({ ...prev, ...data }))
+      } catch (e: any) {
+        setLoadError(e?.message ?? 'Could not load that month.')
+      }
+    })
+  }
+
+  const goToMonth = (targetMonthStr: string) => {
+    setMonthStr(targetMonthStr)
+    refetchMonth(targetMonthStr)
+  }
+
   const handleSaveAll = () => {
     setSaveError(null)
     const allChanges = Object.values(pendingChanges).flat()
@@ -107,7 +127,7 @@ export default function RosterCalendarEditor({
       try {
         await applyRosterCalendarChanges(adminId, allChanges)
         setPendingChanges({})
-        router.refresh()
+        refetchMonth(monthStr)
       } catch (e: any) {
         setSaveError(e?.message ?? 'Something went wrong saving these changes.')
       }
@@ -116,6 +136,14 @@ export default function RosterCalendarEditor({
 
   const weeks: string[][] = []
   for (let i = 0; i < gridDates.length; i += 7) weeks.push(gridDates.slice(i, i + 7))
+
+  const monthLabel = useMemo(
+    () =>
+      new Date(`${monthStr}-01T00:00:00Z`).toLocaleDateString('en-NZ', {
+        month: 'long', year: 'numeric', timeZone: 'UTC',
+      }),
+    [monthStr]
+  )
 
   const selectedDateLabel = selectedDate
     ? new Date(`${selectedDate}T00:00:00Z`).toLocaleDateString('en-NZ', {
@@ -128,11 +156,28 @@ export default function RosterCalendarEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-700 whitespace-nowrap">Visual Roster Calendar</h2>
         <div className="flex items-center gap-2">
-          <a href={prevMonthHref} className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">← Prev</a>
-          <span className="whitespace-nowrap text-xs font-mono font-semibold text-slate-500 px-2">{monthLabel}</span>
-          <a href={nextMonthHref} className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors">Next →</a>
+          <button
+            type="button"
+            onClick={() => goToMonth(addMonthsToMonthString(monthStr, -1))}
+            className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+          >
+            ← Prev
+          </button>
+          <span className="whitespace-nowrap flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-500 px-2">
+            {monthLabel}
+            {isLoadingMonth && <Spinner className="w-3 h-3" />}
+          </span>
+          <button
+            type="button"
+            onClick={() => goToMonth(addMonthsToMonthString(monthStr, 1))}
+            className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+          >
+            Next →
+          </button>
         </div>
       </div>
+
+      {loadError && <p className="text-xs font-semibold text-rose-600">{loadError}</p>}
 
       <div className="grid grid-cols-7 gap-1">
         {WEEKDAY_LABELS.map(label => (
@@ -172,6 +217,7 @@ export default function RosterCalendarEditor({
           }
           onDiscardPending={handleDiscardPending}
           onClose={() => setSelectedDate(null)}
+          onAutogenerated={() => refetchMonth(monthStr)}
         />
       )}
 

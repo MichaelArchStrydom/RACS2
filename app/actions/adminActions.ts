@@ -61,9 +61,6 @@ export async function addMember(adminId: string, data: {
   }
 
   // 3. Create the member record including the generated username.
-  // FIX: was a literal placeholder string, not a real bcrypt hash — new
-  // members could never actually log in. Hash the same documented default
-  // password shown on the login page ("changeme123").
   const defaultHash = await hashPassword('changeme123')
   await db.member.create({
     data: {
@@ -333,7 +330,15 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
   revalidatePath('/admin/roster')
 }
 
-// ─── ROSTER CALENDAR EDITOR ──────────────────────────────────────────────────
+// Lets the calendar switch months client-side (no page navigation), so admins
+// keep whatever mode/selection they're in and pending edits queued across
+// multiple months survive the switch.
+export async function getRosterCalendarMonth(adminId: string, monthStr: string) {
+  await requireAdmin(adminId)
+  const { getRosterCalendarSlotsByDate } = await import('@/lib/roster-calendar-data')
+  return getRosterCalendarSlotsByDate(monthStr)
+}
+
 // Batched edits from the visual month-calendar editor. Nothing here touches
 // the database until the admin hits the global "Save Changes" button, which
 // sends every accumulated edit in one call so they all commit atomically.
@@ -397,8 +402,7 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
   revalidatePath('/admin/roster')
 }
 
-// ─── SYSTEM CONFIG ────────────────────────────────────────────────────────────
-
+// SYSTEM CONFIG
 export async function updateSystemConfig(adminId: string, key: string, value: string) {
   await requireAdmin(adminId)
   await db.systemConfig.upsert({
@@ -409,8 +413,7 @@ export async function updateSystemConfig(adminId: string, key: string, value: st
   revalidatePath('/admin')
 }
 
-// ─── HOUR LEDGER (manual adjustment) ─────────────────────────────────────────
-
+//HOUR LEDGER (manual adjustment) 
 export async function addHourAdjustment(adminId: string, memberId: string, hoursChange: number, notes: string) {
   await requireAdmin(adminId)
   await db.hourLedgerEntry.create({
