@@ -6,7 +6,7 @@ import { useNavMenu } from './NavMenuContext'
 const navLinks = [
   { href: '/profile', label: 'Profile & Settings', icon: '👤' },
   { href: '/contacts', label: 'Contacts', icon: '📞' },
-  { href: '/stats', label: 'stats', icon: '📊' },
+  { href: '/stats', label: 'Stats', icon: '📊' },
 ]
 
 export default function NavMenuPanel() {

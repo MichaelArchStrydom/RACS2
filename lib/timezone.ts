@@ -50,17 +50,6 @@ export function getNZOffsetHours(date: Date): number {
  *
  * Returns a NEW Date — does not mutate the original.
  *
- * Example:
- *   setNZHours(new Date('2024-07-01T00:00:00Z'), 17, 30)
- *   → new Date('2024-07-01T05:30:00Z')  (= 17:30 NZST)
- *
- * FIX: the result is built from the NZ CALENDAR DATE that `date` represents
- * (via Intl formatting), not from `date`'s own UTC calendar day. Those two
- * disagree whenever `date`'s NZ-local hour is earlier than the NZ offset
- * (e.g. any early-morning NZ instant — 07:00 shift starts, or NZ-midnight
- * anchors like nzMidnightUTC()) — in that regime the previous implementation
- * (clone + setUTCHours) silently anchored on the wrong day and produced a
- * result 24h too early. Building from the NZ date string sidesteps that.
  */
 export function setNZHours(date: Date, hours: number, minutes: number): Date {
   const dateFmt = new Intl.DateTimeFormat('en-CA', {
@@ -121,6 +110,39 @@ export function nzMidnightUTC(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number)
   const guess = new Date(Date.UTC(y, m - 1, d))
   return setNZHours(guess, 0, 0)
+}
+
+/**
+ * Shift a "YYYY-MM" calendar month string by `delta` months (may be negative).
+ * Same neutral UTC-anchored approach as addDaysToDateString.
+ */
+export function addMonthsToMonthString(monthStr: string, delta: number): string {
+  const [y, m] = monthStr.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1 + delta, 1))
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Every "YYYY-MM-DD" date string for the calendar-grid view of a month:
+ * the full weeks (Sun-Sat) spanning that month, including the leading/
+ * trailing days borrowed from the adjacent months so the grid is always a
+ * whole number of 7-day rows.
+ */
+export function getMonthGridDateStrings(monthStr: string): string[] {
+  const [y, m] = monthStr.split('-').map(Number)
+
+  const firstOfMonth = new Date(Date.UTC(y, m - 1, 1))
+  const gridStart = new Date(Date.UTC(y, m - 1, 1 - firstOfMonth.getUTCDay()))
+
+  const lastOfMonth = new Date(Date.UTC(y, m, 0)) // day 0 of next month = last day of this one
+  const gridEnd = new Date(Date.UTC(y, m, 0 + (6 - lastOfMonth.getUTCDay())))
+
+  const days: string[] = []
+  for (let t = gridStart.getTime(); t <= gridEnd.getTime(); t += 86_400_000) {
+    const dt = new Date(t)
+    days.push(`${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`)
+  }
+  return days
 }
 
 /**

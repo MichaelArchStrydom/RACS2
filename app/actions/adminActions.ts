@@ -333,6 +333,70 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
   revalidatePath('/admin/roster')
 }
 
+// ─── ROSTER CALENDAR EDITOR ──────────────────────────────────────────────────
+// Batched edits from the visual month-calendar editor. Nothing here touches
+// the database until the admin hits the global "Save Changes" button, which
+// sends every accumulated edit in one call so they all commit atomically.
+export type RosterCalendarChange =
+  | { type: 'cancel'; slotId: string }
+  | { type: 'replaceCrew'; slotId: string; crewId: string }
+  | { type: 'addAppliance'; dateStr: string; applianceName: string; crewId: string }
+
+export async function applyRosterCalendarChanges(adminId: string, changes: RosterCalendarChange[]) {
+  await requireAdmin(adminId)
+  const { nzMidnightUTC } = await import('@/lib/timezone')
+  const { isWeekendDate, getShiftTimesForDate, createAssignmentsForSlot } = await import('@/lib/roster-engine')
+
+  const crewInclude = { members: { include: { qualifications: { include: { qualification: true } } } } }
+
+  await db.$transaction(async (tx) => {
+    for (const change of changes) {
+      if (change.type === 'cancel') {
+        await tx.shiftSlot.update({ where: { id: change.slotId }, data: { status: 'CANCELLED' } })
+        continue
+      }
+
+      if (change.type === 'replaceCrew') {
+        const slot = await tx.shiftSlot.findUnique({ where: { id: change.slotId } })
+        if (!slot) throw new Error('Shift slot not found')
+        const crew = await tx.crew.findUnique({ where: { id: change.crewId }, include: crewInclude })
+        if (!crew) throw new Error('Crew not found')
+
+        await tx.shiftAssignment.deleteMany({ where: { slotId: change.slotId } })
+
+        // Reuse the slot's own stored weekday-ness rather than recompute —
+        // it was already correctly determined when the slot was created.
+        const dateStr = new Date(slot.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' })
+        const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, slot.isWeekend)
+        await createAssignmentsForSlot(change.slotId, crew, shiftStart, shiftEnd, tx)
+        continue
+      }
+
+      if (change.type === 'addAppliance') {
+        const crew = await tx.crew.findUnique({ where: { id: change.crewId }, include: crewInclude })
+        if (!crew) throw new Error('Crew not found')
+
+        // isWeekend is derived server-side from the date itself, never
+        // trusted from the client payload.
+        const isWeekend = isWeekendDate(change.dateStr)
+        const { shiftStart, shiftEnd } = getShiftTimesForDate(change.dateStr, isWeekend)
+        const slot = await tx.shiftSlot.create({
+          data: {
+            date: nzMidnightUTC(change.dateStr),
+            appliance: change.applianceName,
+            roleRequired: 'Full Crew',
+            isWeekend
+          }
+        })
+        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
+      }
+    }
+  })
+
+  revalidatePath('/')
+  revalidatePath('/admin/roster')
+}
+
 // ─── SYSTEM CONFIG ────────────────────────────────────────────────────────────
 
 export async function updateSystemConfig(adminId: string, key: string, value: string) {

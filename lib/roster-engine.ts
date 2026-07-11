@@ -1,5 +1,75 @@
 import { db } from './db'
+import type { Prisma } from '@prisma/client'
 import { setNZHours, nzMidnightUTC, addDaysToDateString } from './timezone'
+
+// Whether a given NZ calendar date falls on a weekend, derived purely from
+// the date string itself (UTC-anchored) — independent of server timezone.
+export function isWeekendDate(dateStr: string): boolean {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return weekday === 0 || weekday === 6
+}
+
+// Shift start/end for a given NZ calendar date: weekends run 07:00-07:00,
+// weekdays run 17:30-07:00 (always ending 07:00 NZ the next calendar day).
+
+export function getShiftTimesForDate(dateStr: string, isWeekend: boolean): { shiftStart: Date; shiftEnd: Date } {
+  const currentDay = nzMidnightUTC(dateStr)
+  const shiftStart = isWeekend
+    ? setNZHours(currentDay, 7, 0)
+    : setNZHours(currentDay, 17, 30)
+
+  const nextDayStr = addDaysToDateString(dateStr, 1)
+  const shiftEnd = setNZHours(nzMidnightUTC(nextDayStr), 7, 0)
+
+  return { shiftStart, shiftEnd }
+}
+
+// Fills OIC/Driver/FF1-3 seats from a crew's members, preferring qualified
+// members for OIC (SO_QUALIFIED) and Driver (PUMP_OP) before falling back to
+// whoever's left. Returns only seats that could actually be filled.
+export function buildSeatLineup(crew: any): { role: string; member: any }[] {
+  let availableMembers = [...crew.members]
+  const extract = (condition: (m: any) => boolean) => {
+    const index = availableMembers.findIndex(condition)
+    if (index !== -1) return availableMembers.splice(index, 1)[0]
+    return null
+  }
+
+  return [
+    { role: 'OIC', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')) || extract(() => true) },
+    { role: 'Driver', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')) || extract(() => true) },
+    { role: 'FF1', member: extract(() => true) },
+    { role: 'FF2', member: extract(() => true) },
+    { role: 'FF3', member: extract(() => true) }
+  ].filter(item => item.member !== null)
+}
+
+// Creates one ShiftAssignment per filled seat for a crew on an existing slot.
+// `client` defaults to the plain db handle but can be a $transaction client
+// so callers can bundle this with other writes atomically.
+export async function createAssignmentsForSlot(
+  slotId: string,
+  crew: any,
+  shiftStart: Date,
+  shiftEnd: Date,
+  client: Prisma.TransactionClient = db
+) {
+  const lineup = buildSeatLineup(crew)
+  for (const seat of lineup) {
+    await client.shiftAssignment.create({
+      data: {
+        slotId,
+        applianceRole: seat.role,
+        memberId: seat.member.id,
+        startTime: shiftStart,
+        endTime: shiftEnd,
+        historicalRank: seat.member.rank,
+        historicalWatchName: crew.watchName
+      }
+    })
+  }
+}
 
 export async function generateRosterForDateRange(startDateStr: string, daysToGenerate: number) {
   const crews = await db.crew.findMany({
@@ -38,22 +108,8 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
     const activeCrew = crews[assignedCrewIndex]
     const backupCrew = crews[backupCrewIndex]
 
-    // Weekday from the calendar date itself (UTC-anchored), not currentDay.getDay()
-    // which would depend on the server's local timezone.
-    const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-    const isWeekend = weekday === 0 || weekday === 6
-
-    // FIX: setNZHours() converts an NZ wall-clock time to the correct UTC
-    // instant regardless of server timezone. The previous code misused
-    // toZonedTime() (which converts UTC → zoned display time, the reverse
-    // direction), so shift times were stored 12-13h wrong on Vercel (UTC).
-    const shiftStart = isWeekend
-      ? setNZHours(currentDay, 7, 0)
-      : setNZHours(currentDay, 17, 30)
-
-    // shiftEnd is always 07:00 NZ on the next calendar day.
-    const nextDayStr = addDaysToDateString(dateStr, 1)
-    const shiftEnd = setNZHours(nzMidnightUTC(nextDayStr), 7, 0)
+    const isWeekend = isWeekendDate(dateStr)
+    const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend)
 
     // Helper function to pull the right people for the seats
     const assignTruckLineup = async (crew: any, applianceName: string) => {
@@ -66,36 +122,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
         }
       })
 
-      // Extract specific roles to guarantee filling the seats
-      let availableMembers = [...crew.members]
-      const extract = (condition: (m: any) => boolean) => {
-        const index = availableMembers.findIndex(condition)
-        if (index !== -1) return availableMembers.splice(index, 1)[0]
-        return null
-      }
-
-      const lineup = [
-        { role: 'OIC', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')) || extract(() => true) },
-        { role: 'Driver', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')) || extract(() => true) },
-        { role: 'FF1', member: extract(() => true) },
-        { role: 'FF2', member: extract(() => true) },
-        { role: 'FF3', member: extract(() => true) }
-      ].filter(item => item.member !== null)
-
-      // Create assignments for this specific truck
-      for (const seat of lineup) {
-        await db.shiftAssignment.create({
-          data: {
-            slotId: slot.id,
-            applianceRole: seat.role,
-            memberId: seat.member.id,
-            startTime: shiftStart,
-            endTime: shiftEnd,
-            historicalRank: seat.member.rank,
-            historicalWatchName: crew.watchName
-          }
-        })
-      }
+      await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd)
     }
 
     // Generate both trucks
