@@ -4,22 +4,22 @@ import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireMember, hashPassword, verifyPassword, revokeAllSessionsForMember, destroySession } from '@/lib/auth'
+import { sanitizeEmail, sanitizePhone } from '@/lib/sanitize'
 
-/**
- * Members can only ever edit their OWN profile — there is no memberId
- * parameter here at all. requireMember() reads the real session from the
- * cookie server-side, so there's no way for a client to spoof "which member"
- * by tampering with a hidden form field.
- */
+
 export async function updateOwnProfile(data: { email?: string; phone?: string }) {
   const member = await requireMember()
 
+  // sanitizeEmail returns null for anything empty/malformed rather than
+  // throwing — an admin-facing field could reject bad input outright, but a
+  // member just trying to update their phone number shouldn't get blocked by
+  // an unrelated email typo, so an invalid email just clears the field.
+  const email = data.email ? sanitizeEmail(data.email) : null
+  const phone = data.phone ? sanitizePhone(data.phone) || null : null
+
   await db.member.update({
     where: { id: member.id },
-    data: {
-      email: data.email?.trim() || null,
-      phone: data.phone?.trim() || null,
-    },
+    data: { email, phone },
   })
 
   revalidatePath('/profile')
@@ -33,9 +33,13 @@ export async function changePasswordAction(
 ): Promise<ChangePasswordState> {
   const member = await requireMember()
 
-  const currentPassword = (formData.get('currentPassword') as string) ?? ''
-  const newPassword = (formData.get('newPassword') as string) ?? ''
-  const confirmPassword = (formData.get('confirmPassword') as string) ?? ''
+  const currentPasswordRaw = formData.get('currentPassword')
+  const newPasswordRaw = formData.get('newPassword')
+  const confirmPasswordRaw = formData.get('confirmPassword')
+
+  const currentPassword = typeof currentPasswordRaw === 'string' ? currentPasswordRaw : ''
+  const newPassword = typeof newPasswordRaw === 'string' ? newPasswordRaw : ''
+  const confirmPassword = typeof confirmPasswordRaw === 'string' ? confirmPasswordRaw : ''
 
   if (!currentPassword || !newPassword || !confirmPassword) {
     return { error: 'All fields are required.' }
@@ -45,6 +49,9 @@ export async function changePasswordAction(
   }
   if (newPassword.length < 8) {
     return { error: 'New password must be at least 8 characters.' }
+  }
+  if (newPassword.length > 128) {
+    return { error: 'New password must be under 128 characters.' }
   }
 
   // Re-fetch fresh from the DB — the session object may be stale.
@@ -60,9 +67,7 @@ export async function changePasswordAction(
     data: { password: newHash, passwordUpdatedAt: new Date() },
   })
 
-  // Force re-login everywhere (including this device) after a password
-  // change — standard security practice, and the exact use case this
-  // function was already documented for in lib/auth.ts.
+  // Force re-login everywhere (including this device) after a password change
   await revokeAllSessionsForMember(member.id)
   await destroySession()
   redirect('/login')

@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { hashPassword, revokeAllSessionsForMember } from '@/lib/auth'
+import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail } from '@/lib/sanitize'
 
 // ─── AUTH GUARD ───────────────────────────────────────────────────────────────
 // Every action calls this first. Pass the activeUserId from the form.
@@ -27,7 +28,23 @@ export async function updateMember(adminId: string, memberId: string, data: {
   expectedHoursPerPeriod?: number | null
 }) {
   await requireAdmin(adminId)
-  await db.member.update({ where: { id: memberId }, data })
+
+  // Only sanitize fields actually present in this partial update — `undefined`
+  // means "leave it alone" to Prisma, so a field this call doesn't touch must
+  // stay undefined rather than become an empty string.
+  const firstName = data.firstName !== undefined ? sanitizeName(data.firstName) : undefined
+  const lastName = data.lastName !== undefined ? sanitizeName(data.lastName) : undefined
+  const rank = data.rank !== undefined ? sanitizeRank(data.rank) : undefined
+  const zoneType = data.zoneType !== undefined ? sanitizeZoneType(data.zoneType) : undefined
+
+  if (firstName === '') throw new Error('First name cannot be empty.')
+  if (lastName === '') throw new Error('Last name cannot be empty.')
+  if (rank === '') throw new Error('Rank cannot be empty.')
+
+  await db.member.update({
+    where: { id: memberId },
+    data: { ...data, firstName, lastName, rank, zoneType },
+  })
   revalidatePath('/admin/members')
   revalidatePath(`/admin/members/${memberId}`)
 }
@@ -44,9 +61,18 @@ export async function addMember(adminId: string, data: {
 }) {
   await requireAdmin(adminId)
 
+  const firstName = sanitizeName(data.firstName)
+  const lastName = sanitizeName(data.lastName)
+  const rank = sanitizeRank(data.rank)
+  const zoneType = sanitizeZoneType(data.zoneType)
+  const email = data.email ? sanitizeEmail(data.email) : null
+
+  if (!firstName || !lastName) throw new Error('First and last name are required.')
+  if (!rank) throw new Error('Rank is required.')
+
   // 1. Generate a clean base username
-  const cleanFirst = data.firstName.toLowerCase().replace(/[^a-z]/g, '')
-  const cleanLast = data.lastName.toLowerCase().replace(/[^a-z]/g, '')
+  const cleanFirst = firstName.toLowerCase().replace(/[^a-z]/g, '')
+  const cleanLast = lastName.toLowerCase().replace(/[^a-z]/g, '')
   const baseUsername = `${cleanFirst}.${cleanLast}`
 
   // 2. Query DB to ensure uniqueness (handling collisions)
@@ -65,6 +91,11 @@ export async function addMember(adminId: string, data: {
   await db.member.create({
     data: {
       ...data,
+      firstName,
+      lastName,
+      rank,
+      zoneType,
+      email,
       username,
       password: defaultHash,
       isActive: true,
@@ -77,7 +108,10 @@ export async function addMember(adminId: string, data: {
 
 export async function resetMemberPassword(adminId: string, memberId: string, newPassword: string) {
   await requireAdmin(adminId)
-  if (newPassword.length < 8) throw new Error('New password must be at least 8 characters.')
+  if (typeof newPassword !== 'string' || newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters.')
+  }
+  if (newPassword.length > 128) throw new Error('New password must be under 128 characters.')
 
   const hash = await hashPassword(newPassword)
   await db.member.update({
@@ -85,8 +119,7 @@ export async function resetMemberPassword(adminId: string, memberId: string, new
     data: { password: hash, passwordUpdatedAt: new Date() },
   })
 
-  // Force the member to re-authenticate everywhere with the new password —
-  // same security practice as when a member changes their own password.
+  // Force the member to re-authenticate everywhere with the new password
   await revokeAllSessionsForMember(memberId)
   revalidatePath(`/admin/members/${memberId}`)
 }
@@ -97,8 +130,7 @@ export async function deactivateMember(adminId: string, memberId: string) {
   revalidatePath('/admin/members')
 }
 
-// ─── QUALIFICATIONS ───────────────────────────────────────────────────────────
-
+//QUALIFICATIONS
 export async function setMemberQualification(adminId: string, memberId: string, qualKey: string, active: boolean) {
   await requireAdmin(adminId)
 
@@ -169,7 +201,7 @@ export async function setQualificationActive(adminId: string, qualificationId: s
   revalidatePath('/admin/qualifications')
 }
 
-// ─── CREWS ────────────────────────────────────────────────────────────────────
+//  CREWS 
 
 export async function updateCrew(adminId: string, crewId: string, data: {
   watchName?: string
@@ -194,7 +226,7 @@ export async function moveMemberToCrew(adminId: string, memberId: string, crewId
   revalidatePath('/admin/members')
 }
 
-// ─── APPLIANCES ───────────────────────────────────────────────────────────────
+//  APPLIANCES 
 
 export async function updateAppliance(adminId: string, applianceId: string, data: {
   name?: string
@@ -239,7 +271,7 @@ export async function deletePublicHoliday(adminId: string, holidayId: string) {
   revalidatePath('/admin/holidays')
 }
 
-// ─── LEAVE ────────────────────────────────────────────────────────────────────
+//  LEAVE 
 
 export async function approveLeave(adminId: string, leaveId: string, adminNotes?: string) {
   await requireAdmin(adminId)
@@ -282,7 +314,7 @@ export async function createLeave(adminId: string, data: {
   revalidatePath('/admin/leave')
 }
 
-// ─── STAND-IN REQUESTS (admin cancel) ────────────────────────────────────────
+//  STAND-IN REQUESTS (admin cancel) 
 
 export async function cancelStandInRequest(adminId: string, requestId: string) {
   await requireAdmin(adminId)
@@ -297,7 +329,7 @@ export async function cancelStandInRequest(adminId: string, requestId: string) {
   revalidatePath('/')
 }
 
-// ─── ROSTER GENERATION ───────────────────────────────────────────────────────
+//  ROSTER GENERATION 
 
 export async function generateRoster(adminId: string, startDateStr: string, days: number) {
   await requireAdmin(adminId)

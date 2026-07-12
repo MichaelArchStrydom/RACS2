@@ -25,6 +25,64 @@ export function getShiftTimesForDate(dateStr: string, isWeekend: boolean): { shi
   return { shiftStart, shiftEnd }
 }
 
+export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { assignedCrewIndex: number; backupCrewIndex: number } {
+  const assignedCrewIndex = Math.abs(dayIndex % crewCount)
+  const backupCrewIndex = (assignedCrewIndex + 1) % crewCount
+  return { assignedCrewIndex, backupCrewIndex }
+}
+
+export async function getMonthlyRosteredHours(memberId: string, memberCrewId: string | null, monthStr: string): Promise<number> {
+  if (!memberCrewId) return 0
+
+  const crews = await db.crew.findMany({
+    include: { members: { include: { qualifications: { include: { qualification: true } } } } },
+    orderBy: { crewOrder: 'asc' }
+  })
+  const memberCrewIndex = crews.findIndex(c => c.id === memberCrewId)
+  if (memberCrewIndex === -1) return 0
+  const crew = crews[memberCrewIndex]
+
+  const [y, m] = monthStr.split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const monthStartStr = `${monthStr}-01`
+  const monthEndStr = `${monthStr}-${String(daysInMonth).padStart(2, '0')}`
+  const rangeStart = nzMidnightUTC(monthStartStr)
+  const rangeEnd = nzMidnightUTC(addDaysToDateString(monthEndStr, 1))
+
+  const [generatedSlots, realAssignments] = await Promise.all([
+    db.shiftSlot.findMany({ where: { date: { gte: rangeStart, lt: rangeEnd } }, select: { date: true } }),
+    db.shiftAssignment.findMany({
+      where: { memberId, slot: { date: { gte: rangeStart, lt: rangeEnd } } },
+      select: { startTime: true, endTime: true }
+    }),
+  ])
+
+  const generatedDateKeys = new Set(
+    generatedSlots.map(s => new Date(s.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' }))
+  )
+
+  let totalHours = realAssignments.reduce(
+    (sum, a) => sum + (a.endTime.getTime() - a.startTime.getTime()) / (1000 * 60 * 60),
+    0
+  )
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    if (generatedDateKeys.has(dateStr)) continue // real data already summed above
+
+    const dayIndex = Math.floor(Date.UTC(y, m - 1, day) / (1000 * 60 * 60 * 24))
+    const { assignedCrewIndex, backupCrewIndex } = getCrewIndicesForDay(dayIndex, crews.length)
+    if (memberCrewIndex !== assignedCrewIndex && memberCrewIndex !== backupCrewIndex) continue
+
+    const lineup = buildSeatLineup(crew)
+    if (lineup.some(seat => seat.member.id === memberId)) {
+      totalHours += isWeekendDate(dateStr) ? 24 : 13.5
+    }
+  }
+
+  return totalHours
+}
+
 // Fills OIC/Driver/FF1-3 seats from a crew's members, preferring qualified
 // members for OIC (SO_QUALIFIED) and Driver (PUMP_OP) before falling back to
 // whoever's left. Returns only seats that could actually be filled.
@@ -102,8 +160,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
     // of where this runs.
     const dayIndex = Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24))
 
-    const assignedCrewIndex = Math.abs(dayIndex % crews.length)
-    const backupCrewIndex = (assignedCrewIndex + 1) % crews.length
+    const { assignedCrewIndex, backupCrewIndex } = getCrewIndicesForDay(dayIndex, crews.length)
 
     const activeCrew = crews[assignedCrewIndex]
     const backupCrew = crews[backupCrewIndex]

@@ -3,7 +3,8 @@ import { requireMember } from '@/lib/auth'
 import { updateOwnProfile } from '@/app/actions/profileActions'
 import ChangePasswordForm from '@/components/ChangePasswordForm'
 import Link from 'next/link'
-import { formatNZTime } from '@/lib/timezone'
+import { formatNZTime, todayNZDateString } from '@/lib/timezone'
+import { getMonthlyRosteredHours } from '@/lib/roster-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,12 @@ export default async function ProfilePage() {
   ])
 
   if (!member) return null
+
+  const currentMonthStr = todayNZDateString().slice(0, 7)
+  const monthlyRosteredHours = await getMonthlyRosteredHours(member.id, member.crewId, currentMonthStr)
+  const monthLabel = new Date(`${currentMonthStr}-01T00:00:00Z`).toLocaleDateString('en-NZ', {
+    month: 'long', timeZone: 'UTC',
+  })
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
@@ -92,10 +99,10 @@ export default async function ProfilePage() {
             </div>
             <div className="bg-slate-50 rounded-lg p-3 border">
               <p className="text-2xl font-bold text-slate-700">
-                {member.expectedHoursPerPeriod ?? '—'}
+                {member.crewId ? `${monthlyRosteredHours}h` : '—'}
               </p>
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mt-0.5">
-                {member.expectedHoursPerPeriod == null ? 'Expected Hours (system default)' : 'Expected Hours / Period'}
+                Rostered Hours ({monthLabel})
               </p>
             </div>
           </div>

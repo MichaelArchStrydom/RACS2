@@ -49,11 +49,7 @@ export async function acceptStandInRequest(
   const [shours, smin] = selectedStartStr.split(':').map(Number)
   const [ehours, emin] = selectedEndStr.split(':').map(Number)
 
-  // FIX: setHours() used the server's local timezone — on Vercel (UTC) that
-  // treated "17:30" as 17:30 UTC instead of 17:30 NZ (= 05:30 UTC), storing
-  // cover windows 12-13h off. setNZHours() converts NZ wall-clock time to the
-  // correct UTC instant regardless of server timezone.
-  //
+
   // Both coverStart and coverEnd are based on request.startTime's calendar day
   // (not request.endTime, which may already be the next day for overnight
   // shifts) so the day-rollover logic below is the only place that adds a day.
@@ -70,12 +66,7 @@ export async function acceptStandInRequest(
   const origReqStart = new Date(request.startTime)
   const origReqEnd = new Date(request.endTime)
 
-  // RACE FIX: everything below runs in one transaction, and the request's
-  // status flip is a CONDITIONAL update (only succeeds if it's still
-  // PENDING). If two people accept the same request at once, only the first
-  // transaction's updateMany matches a row — the second gets count 0 and
-  // throws, rolling back its half-done assignment split instead of leaving
-  // duplicate/inconsistent ShiftAssignment rows.
+
   await db.$transaction(async (tx) => {
     const claim = await tx.standInRequest.updateMany({
       where: { id: requestId, status: 'PENDING' },
@@ -88,12 +79,37 @@ export async function acceptStandInRequest(
     })
     if (claim.count === 0) throw new Error(ALREADY_ACTIONED)
 
-    // FIX: request.requestedById is whoever is CURRENTLY asking for cover —
-    // which may be the shift's original owner (memberId) OR someone who's
-    // already covering it and now needs a further stand-in (actualMemberId).
-    // Matching on memberId alone missed this second, "chain covering" case
-    // entirely, so a further cover request could never find (or split) the
-    // right assignment.
+    //Hour ledger
+    if (coveringMemberId !== request.requestedById) {
+      const coveredHours = (coverEnd.getTime() - coverStart.getTime()) / (1000 * 60 * 60)
+
+      await tx.hourLedgerEntry.create({
+        data: {
+          memberId: coveringMemberId,
+          hoursChange: coveredHours,
+          reason: 'SHIFT_COVERED_OUTGOING',
+          relatedRequestId: requestId,
+        }
+      })
+      await tx.member.update({
+        where: { id: coveringMemberId },
+        data: { hourBalance: { increment: coveredHours } }
+      })
+
+      await tx.hourLedgerEntry.create({
+        data: {
+          memberId: request.requestedById,
+          hoursChange: -coveredHours,
+          reason: 'SHIFT_COVERED_INCOMING',
+          relatedRequestId: requestId,
+        }
+      })
+      await tx.member.update({
+        where: { id: request.requestedById },
+        data: { hourBalance: { increment: -coveredHours } }
+      })
+    }
+
     const intersectingAssignments = await tx.shiftAssignment.findMany({
       where: {
         slotId: request.slotId,
@@ -115,10 +131,6 @@ export async function acceptStandInRequest(
 
       if (actualStart.getTime() < actualEnd.getTime()) {
 
-        // FIX: leftover (uncovered-by-this-action) slices must keep whoever
-        // was already covering this assignment (assignment.actualMemberId).
-        // Previously this was dropped, which silently reverted a covering
-        // member's remaining shift back to the original owner.
         if (origStart.getTime() < actualStart.getTime()) {
           await tx.shiftAssignment.create({
             data: {

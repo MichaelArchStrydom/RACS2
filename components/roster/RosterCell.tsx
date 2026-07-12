@@ -203,7 +203,11 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                         }
 
                         try {
-                          await createStandInRequest(assignment.id, assignment.memberId, targetStart, targetEnd)
+                          // Whoever is CURRENTLY on the hook for this slice —
+                          // the original owner, or (chain-covering) whoever's
+                          // already covering it — not always assignment.memberId.
+                          const requestedById = assignment.actualMemberId ?? assignment.memberId
+                          await createStandInRequest(assignment.id, requestedById, targetStart, targetEnd)
                           setShowTimePicker(null)
                         } catch {
                           setError('Something went wrong — please try again.')
