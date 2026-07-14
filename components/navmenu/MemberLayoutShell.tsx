@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import PageShell from '@/components/navmenu/PageShell'
 
 const memberNavItems = [
-  { href: '/', label: 'Roster Board', widthClass: 'max-w-7xl' },
+  { href: '/', label: 'RACS 2', widthClass: 'max-w-7xl' },
   { href: '/profile', label: 'Profile & Settings', widthClass: 'max-w-2xl' },
   { href: '/contacts', label: 'Contacts', widthClass: 'max-w-2xl' },
   { href: '/stats', label: 'Hour Leaderboard', widthClass: 'max-w-3xl' },

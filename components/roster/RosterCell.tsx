@@ -25,8 +25,9 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
     const isCovered = !!assignment.actualMember
     const start = new Date(assignment.startTime).getTime()
     const end = new Date(assignment.endTime).getTime()
+    const currentOwner = assignment.actualMemberId ?? assignment.memberId
     const isRequested = slotRequests.some(r => {
-      if (r.requestedById !== assignment.memberId || r.status !== 'PENDING') return false
+      if (r.requestedById !== currentOwner || r.status !== 'PENDING') return false
       const reqStart = new Date(r.startTime).getTime()
       const reqEnd = new Date(r.endTime).getTime()
       return reqStart < end && reqEnd > start
@@ -70,7 +71,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
 
     const overlapping = slotRequests.filter(r =>
       r.status === 'PENDING' &&
-      r.requestedById === assignment.memberId &&
+      r.requestedById === (assignment.actualMemberId ?? assignment.memberId) &&
       new Date(r.startTime).getTime() < assignEnd &&
       new Date(r.endTime).getTime() > assignStart
     )
@@ -115,7 +116,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
         const assignmentEnd = new Date(assignment.endTime).getTime()
 
         const isRequested = slotRequests.some(r => {
-          if (r.requestedById !== assignment.memberId || r.status !== 'PENDING') return false
+          if (r.requestedById !== (assignment.actualMemberId ?? assignment.memberId) || r.status !== 'PENDING') return false
           const reqStart = new Date(r.startTime).getTime()
           const reqEnd = new Date(r.endTime).getTime()
           return reqStart < assignmentEnd && reqEnd > assignmentStart
