@@ -23,8 +23,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
   const appliances = await db.appliance.findMany({ orderBy: { displayOrder: 'asc' } })
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold text-slate-800">Appliances</h1>
+    <div className="space-y-6 max-w-3xl mx-auto">
       <p className="text-sm text-slate-500">
         Appliance names must exactly match the strings used in the roster engine ("1st Due", "2nd Due").
         Changing a name here does not automatically update existing roster slots — do a roster regeneration afterward.

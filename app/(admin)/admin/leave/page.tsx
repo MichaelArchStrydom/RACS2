@@ -51,9 +51,7 @@ export default async function LeavePage({ searchParams }: PageProps) {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <h1 className="text-2xl font-bold text-slate-800">Leave Management</h1>
-
+    <div className="space-y-6 max-w-4xl mx-auto">
       {/* Create leave (admin-initiated, auto-approved) */}
       <details className="bg-white border rounded-xl shadow-sm">
         <summary className="px-5 py-4 cursor-pointer text-sm font-semibold text-slate-700 hover:text-rose-600">

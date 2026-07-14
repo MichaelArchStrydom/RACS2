@@ -38,11 +38,8 @@ export default async function CrewsPage({ searchParams }: PageProps) {
   const allActiveCrews = crews.filter((c: any) => c.isActive)
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Crews</h1>
-        <span className="text-sm text-slate-500">{allActiveCrews.length} active crews</span>
-      </div>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <p className="text-sm text-slate-500">{allActiveCrews.length} active crews</p>
 
       {/* Add crew */}
       <details className="bg-white border rounded-xl shadow-sm">

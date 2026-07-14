@@ -55,10 +55,10 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   )
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-4">
         <Link href={`/admin/members?user=${userId}`} className="text-sm text-slate-500 hover:text-slate-800">← Members</Link>
-        <h1 className="text-2xl font-bold text-slate-800">{member.firstName} {member.lastName}</h1>
+        <h2 className="text-xl font-bold text-slate-800">{member.firstName} {member.lastName}</h2>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${member.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
           {member.isActive ? 'Active' : 'Inactive'}
         </span>

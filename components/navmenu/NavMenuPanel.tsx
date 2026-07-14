@@ -2,10 +2,13 @@
 
 import Link from 'next/link'
 import { useNavMenu } from './NavMenuContext'
+import { logoutAction } from '@/app/actions/authActions'
+import { useBodyScrollLock } from '@/components/useBodyScrollLock'
 
 interface NavMenuPanelProps {
   isAdmin: boolean
   userId: string
+  memberName: string
 }
 export const AdminNavLinks = [
   { href: '/admin', label: 'Admin Dashboard', icon: '🎛️' },
@@ -18,8 +21,9 @@ export const AdminNavLinks = [
   { href: '/admin/leave', label: 'Leave', icon: '🏖️' },
   { href: '/admin/roster', label: 'Roster Tools', icon: '⚙️' },
 ]
-export default function NavMenuPanel({ isAdmin, userId }: NavMenuPanelProps) {
+export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPanelProps) {
   const { isOpen, close } = useNavMenu()
+  useBodyScrollLock(isOpen)
   const userQuery = `?user=${userId}`
 
   const navLinks = [
@@ -49,6 +53,21 @@ export default function NavMenuPanel({ isAdmin, userId }: NavMenuPanelProps) {
           <button onClick={close} className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1">✕</button>
         </div>
 
+        <div className="p-4 border-b bg-slate-50 flex items-center justify-between shrink-0">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
+            <span className="text-sm font-bold text-slate-700">{memberName}</span>
+          </div>
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-100 px-2 py-1 rounded transition-colors border border-transparent hover:border-rose-200"
+            >
+              Sign Out
+            </button>
+          </form>
+        </div>
+
         <nav className="flex-1 overflow-y-auto p-2">
           {navLinks.map((item) => (
             <Link
@@ -65,23 +84,20 @@ export default function NavMenuPanel({ isAdmin, userId }: NavMenuPanelProps) {
           ))}
           {isAdmin && (
             <>
-              <div className="p-0 border border-amber-700 bg-amber-200 rounded-lg">
-                {AdminNavLinks.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={`${item.href}${userQuery}`}
-                    onClick={close}
-                    className="flex items-start gap-3 px-3 py-3 rounded-lg hover:bg-amber-500 transition-colors"
-                  >
-                    <span className="text-lg shrink-0">{item.icon}</span>
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-800">{item.label}</span>
-                    </span>
-                  </Link>
-                ))}
-              </div>
-
-
+              <div className="my-2 border-t border-slate-100" />
+              {AdminNavLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={`${item.href}${userQuery}`}
+                  onClick={close}
+                  className="flex items-start gap-3 px-3 py-3 rounded-lg hover:bg-amber-50 transition-colors"
+                >
+                  <span className="text-lg shrink-0">{item.icon}</span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold text-slate-800">{item.label}</span>
+                  </span>
+                </Link>
+              ))}
             </>
           )}
         </nav>

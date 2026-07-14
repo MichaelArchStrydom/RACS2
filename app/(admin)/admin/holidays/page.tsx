@@ -24,8 +24,7 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
   const past = holidays.filter((h: any) => new Date(h.date) < new Date())
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-slate-800">Public Holidays</h1>
+    <div className="space-y-6 max-w-2xl mx-auto">
       <p className="text-sm text-slate-500">
         Holidays marked as WEEKEND will be treated like weekend shifts (07:00–07:00) by the roster engine when regenerating.
         Existing slots are not retroactively changed.

@@ -11,6 +11,7 @@ import {
 } from '@/app/actions/announcementActions'
 import { formatNZTime } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
+import { useBodyScrollLock } from '@/components/useBodyScrollLock'
 
 interface Receipt {
   readAt: Date | string | null
@@ -34,6 +35,7 @@ type ReceiptAction = (memberId: string, announcementId: string) => Promise<void>
 
 export default function AnnouncementsPanel({ announcements, activeUserId }: Props) {
   const { isOpen, close } = useAnnouncementsPanel()
+  useBodyScrollLock(isOpen)
   const router = useRouter()
   const [showArchived, setShowArchived] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -58,9 +60,6 @@ export default function AnnouncementsPanel({ announcements, activeUserId }: Prop
 
   return (
     <>
-      {/* Backdrop — the visible "sliver" of roster on the left is just this
-          transparent layer; clicking it (or the roster showing through it)
-          closes the panel. Only intercepts clicks while open. */}
       <div
         onClick={close}
         aria-hidden="true"

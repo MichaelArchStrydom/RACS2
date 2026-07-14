@@ -40,13 +40,8 @@ export default async function MembersPage({ searchParams }: PageProps) {
   ])
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Members</h1>
-          <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
-        </div>
-      </div>
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
 
       {/* Search */}
       <form method="GET" className="flex gap-2">

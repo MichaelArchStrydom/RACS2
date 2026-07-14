@@ -24,8 +24,7 @@ export default async function QualificationsPage({ searchParams }: PageProps) {
   const qualifications = await db.qualification.findMany({ orderBy: { name: 'asc' } })
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold text-slate-800">Qualifications</h1>
+    <div className="space-y-6 max-w-3xl mx-auto">
       <p className="text-sm text-slate-500">
         Qualifications members can be awarded. The machine key can never be changed after creation — add a new
         qualification instead of renaming a key. Roles enabled here let the roster engine consider this qualification

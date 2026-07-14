@@ -2,7 +2,6 @@ import { db } from '@/lib/db'
 import { requireMember } from '@/lib/auth'
 import { updateOwnProfile } from '@/app/actions/profileActions'
 import ChangePasswordForm from '@/components/ChangePasswordForm'
-import Link from 'next/link'
 import { formatNZTime, todayNZDateString } from '@/lib/timezone'
 import { getMonthlyRosteredHours } from '@/lib/roster-engine'
 
@@ -29,13 +28,7 @@ export default async function ProfilePage() {
   })
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 md:p-8 text-slate-900">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-800">Profile & Settings</h1>
-          <Link href="/" className="text-xs font-semibold text-slate-500 hover:text-slate-700">← Back to Roster</Link>
-        </div>
-
+    <div className="max-w-2xl mx-auto space-y-6">
         {/* Read-only identity — username can only be changed by an admin */}
         <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
           <h2 className="text-sm font-semibold text-slate-700">Identity</h2>
@@ -129,7 +122,6 @@ export default async function ProfilePage() {
             </div>
           )}
         </section>
-      </div>
-    </main>
+    </div>
   )
 }
