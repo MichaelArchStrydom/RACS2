@@ -32,6 +32,10 @@ model Member {
 
   // NEW: admin and status fields
   isAdmin  Boolean @default(false)
+  // Moderator: can manage cover requests on other members' behalf (create /
+  // cancel from the roster board) but has NO access to the admin portal.
+  // Admins implicitly have all moderator abilities.
+  isModerator Boolean @default(false)
   isActive Boolean @default(true)
 
   // Zone type controls automatic cover-request generation by the roster engine:
@@ -213,6 +217,14 @@ model StandInRequest {
 
   requestType String // COVER, SICK, HOLIDAY — was mixed-case before, standardise to UPPER
   status      String @default("PENDING") // PENDING, COMPLETED, CANCELLED
+
+  // AUDIT: who actually performed the action — plain string ids (no FK, same
+  // append-only-friendly pattern as HourLedgerEntry.relatedRequestId).
+  // createdById = who posted the request (equals requestedById for a normal
+  // self-request, a moderator/admin's id for on-behalf requests).
+  // cancelledById = the moderator/admin who cancelled it, if any.
+  createdById   String?
+  cancelledById String?
 
   responses StandInResponse[]
 }

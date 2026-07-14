@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { acceptStandInRequest } from '@/app/actions/rosterActions'
+import { acceptStandInRequest, moderatorCancelStandInRequest } from '@/app/actions/rosterActions'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { formatNZTime, normalizeTimeInput } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
@@ -10,9 +10,13 @@ import Spinner from '@/components/Spinner'
 interface StandInRequestItemProps {
   request: any
   activeUserId: string
+  // Board-level cancel mode (moderators/admins only): the submit button
+  // becomes "Delete Request" and the time inputs define WHICH PORTION of the
+  // request to cancel (full window pre-filled = full cancel).
+  cancelMode?: boolean
 }
 
-export default function StandInRequestItem({ request, activeUserId }: StandInRequestItemProps) {
+export default function StandInRequestItem({ request, activeUserId, cancelMode = false }: StandInRequestItemProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -26,6 +30,34 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    if (cancelMode) {
+      const dateStr = new Date(request.slot.date).toLocaleDateString('en-NZ', {
+        timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+      })
+      const ok = confirm(
+        `Cancel this cover request?\n\n` +
+        `${request.requestedBy.firstName} ${request.requestedBy.lastName}\n` +
+        `${dateStr} · ${coverStart} – ${coverEnd}\n\n` +
+        `The shift stays with them as originally rostered.`
+      )
+      if (!ok) return
+      startTransition(async () => {
+        try {
+          await moderatorCancelStandInRequest(request.id, coverStart, coverEnd)
+          router.refresh()
+        } catch (err) {
+          setError(
+            err instanceof Error && err.message === ALREADY_ACTIONED
+              ? 'Someone else just actioned this request — refreshing…'
+              : 'Something went wrong — please try again.'
+          )
+          router.refresh()
+        }
+      })
+      return
+    }
+
     startTransition(async () => {
       try {
         await acceptStandInRequest(request.id, activeUserId, coverStart, coverEnd)
@@ -109,12 +141,14 @@ export default function StandInRequestItem({ request, activeUserId }: StandInReq
               type="submit"
               disabled={isPending}
               className={`flex items-center justify-center gap-1.5 px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-2.5 md:py-1.5
-                ${isOwnRequest
-                  ? 'bg-rose-500 hover:bg-rose-600 text-white'
-                  : 'bg-amber-500 hover:bg-amber-600 text-white'}`}
+                ${cancelMode
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                  : isOwnRequest
+                    ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'}`}
             >
               {isPending && <Spinner className="w-3.5 h-3.5" />}
-              {isPending ? 'Processing...' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
+              {isPending ? 'Processing...' : cancelMode ? '🗑 Delete Request' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
             </button>
           </div>
         </form>

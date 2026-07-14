@@ -118,6 +118,49 @@ export default async function HomePage({ searchParams }: PageProps) {
     (a) => a.receipts.length === 0 || a.receipts[0].readAt === null
   ).length;
 
+  // ── Moderator extras ──────────────────────────────────────────────────
+  // Admins get all moderator abilities; only mods/admins receive the member
+  // picker list and the all-members shift pool — normal members' payload
+  // and UI stay byte-identical to before this feature existed.
+  const viewerIsMod = currentMember.isAdmin || currentMember.isModerator;
+
+  const memberOptions = viewerIsMod
+    ? await db.member.findMany({
+        where: { isActive: true },
+        orderBy: { lastName: 'asc' },
+        select: { id: true, firstName: true, lastName: true },
+      })
+    : undefined;
+
+  // Same shape/filter as userShifts, generalized to every member using the
+  // already-fetched slots (no extra query): a member's own uncovered
+  // assignment, or one they're currently covering — keyed by ownerId so the
+  // on-behalf form can filter to the chosen member.
+  // (Every assignment slice is requestable by exactly its current owner, so
+  // no filter is needed — the per-member filter in userShifts is just the
+  // special case "current owner === me".)
+  const allShifts = viewerIsMod
+    ? activeSlots.flatMap((slot) =>
+        slot.assignments
+          .map((a: any) => {
+            const ownerId = a.actualMemberId ?? a.memberId;
+            const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+            const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+            const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+            const coveringNote = a.actualMemberId ? ` · covering for ${a.member.lastName}` : '';
+
+            return {
+              ownerId,
+              assignmentId: a.id,
+              label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}${coveringNote}`,
+              startIso: a.startTime.toISOString(),
+              defaultStart: startStr,
+              defaultEnd: endStr,
+            };
+          })
+      )
+    : undefined;
+
   return (
     <>
       <LiveRefresher />
@@ -157,6 +200,9 @@ export default async function HomePage({ searchParams }: PageProps) {
             requests={standInRequests}
             activeUserId={activeUserId}
             userShifts={userShifts}
+            isModerator={viewerIsMod}
+            memberOptions={memberOptions}
+            allShifts={allShifts}
           />
         </RosterInteractionProvider>
 

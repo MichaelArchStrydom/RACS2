@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
 import { createStandInRequest } from '@/app/actions/rosterActions'
@@ -16,13 +16,31 @@ interface UserShift {
   defaultEnd: string   // "HH:MM" pre-filled in the Until input
 }
 
+interface MemberOption {
+  id: string
+  firstName: string
+  lastName: string
+}
+
 interface RequestsBoardProps {
   requests: any[]
   activeUserId: string
   userShifts: UserShift[]
+  // Moderator extras — all optional; absent for normal members, whose UI is
+  // unchanged from before the moderator feature existed.
+  isModerator?: boolean
+  memberOptions?: MemberOption[]
+  allShifts?: (UserShift & { ownerId: string })[]
 }
 
-export default function RequestsBoard({ requests, activeUserId, userShifts }: RequestsBoardProps) {
+export default function RequestsBoard({
+  requests,
+  activeUserId,
+  userShifts,
+  isModerator = false,
+  memberOptions = [],
+  allShifts = [],
+}: RequestsBoardProps) {
   const router = useRouter()
   const [showCovered, setShowCovered] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -35,15 +53,52 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
   const createFormRef = useRef<HTMLFormElement>(null)
   const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
+  // Moderator state: on-behalf mode adds a member-picker step above the
+  // normal create form; cancelMode turns the whole board into an explicit
+  // "deleting requests" state so cancels can't happen by accident.
+  const [onBehalfMode, setOnBehalfMode] = useState(false)
+  const [memberSearch, setMemberSearch] = useState('')
+  const [targetMemberId, setTargetMemberId] = useState('')
+  const [cancelMode, setCancelMode] = useState(false)
+  const [showModTools, setShowModTools] = useState(false)
+
   const filteredRequests = requests.filter(req => showCovered || req.status === 'PENDING')
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
 
-  const selectedShift = userShifts.find(s => s.assignmentId === selectedShiftId)
+  // The shift pool the create form draws from: your own shifts normally, or
+  // the chosen member's shifts in on-behalf mode.
+  const shiftPool = onBehalfMode
+    ? allShifts.filter(s => s.ownerId === targetMemberId)
+    : userShifts
+  const selectedShift = shiftPool.find(s => s.assignmentId === selectedShiftId)
+
+  // Whose name the request will be posted under.
+  const requestForId = onBehalfMode ? targetMemberId : activeUserId
+
+  const matchingMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase()
+    if (!q) return memberOptions
+    return memberOptions.filter(m =>
+      `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
+      `${m.lastName} ${m.firstName}`.toLowerCase().includes(q)
+    )
+  }, [memberOptions, memberSearch])
+
+  const resetCreateState = () => {
+    setShowCreateForm(false)
+    setOnBehalfMode(false)
+    setMemberSearch('')
+    setTargetMemberId('')
+    setSelectedShiftId('')
+    setCoverStart('')
+    setCoverEnd('')
+    setCreateError(null)
+  }
 
   const handleShiftSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value
     setSelectedShiftId(id)
-    const shift = userShifts.find(s => s.assignmentId === id)
+    const shift = shiftPool.find(s => s.assignmentId === id)
     if (shift) {
       setCoverStart(shift.defaultStart)
       setCoverEnd(shift.defaultEnd)
@@ -68,6 +123,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
     const shift = userShifts.find(s => s.assignmentId === pendingShiftAssignmentId)
     if (shift) {
       setShowCreateForm(true)
+      setOnBehalfMode(false)
       setSelectedShiftId(shift.assignmentId)
       setCoverStart(shift.defaultStart)
       setCoverEnd(shift.defaultEnd)
@@ -96,7 +152,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedShift) return
+    if (!selectedShift || !requestForId) return
     setCreateError(null)
 
     const startDate = new Date(selectedShift.startIso)
@@ -112,11 +168,8 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
 
     startCreateTransition(async () => {
       try {
-        await createStandInRequest(selectedShift.assignmentId, activeUserId, startDate, endDate)
-        setShowCreateForm(false)
-        setSelectedShiftId('')
-        setCoverStart('')
-        setCoverEnd('')
+        await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate)
+        resetCreateState()
       } catch {
         setCreateError('Something went wrong posting this request — please try again.')
         router.refresh()
@@ -125,7 +178,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
   }
 
   return (
-    <section className="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+    <section className={`p-5 rounded-xl shadow-sm border space-y-4 transition-colors ${cancelMode ? 'bg-rose-50 border-rose-300' : 'bg-white'}`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-base font-semibold text-rose-600 flex items-center gap-2">
           <span>Active Stand-In Requests</span>
@@ -134,56 +187,161 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
               {pendingCount} Open
             </span>
           )}
+          {cancelMode && (
+            <span className="bg-rose-600 text-white px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide">
+              Cancel Mode
+            </span>
+          )}
         </h2>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* New: open the create-request form */}
-          {userShifts.length > 0 && (
+          {cancelMode ? (
+            /* Cancel mode: everything else disappears — one green exit. */
             <button
               type="button"
-              onClick={() => setShowCreateForm(v => !v)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
+              onClick={() => setCancelMode(false)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100 transition-colors"
             >
-              {showCreateForm ? '✕ Cancel' : '+ Request Cover'}
+              ✓ End Edit Mode
             </button>
-          )}
+          ) : (
+            <>
+              {/* New: open the create-request form */}
+              {userShifts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showCreateForm && !onBehalfMode) { resetCreateState() } else {
+                      resetCreateState()
+                      setShowCreateForm(true)
+                    }
+                  }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
+                >
+                  {showCreateForm && !onBehalfMode ? '✕ Cancel' : '+ Request Cover'}
+                </button>
+              )}
 
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border">
-            <input
-              type="checkbox"
-              checked={showCovered}
-              onChange={(e) => setShowCovered(e.target.checked)}
-              className="rounded text-rose-500 focus:ring-rose-500 cursor-pointer"
-            />
-            Show Covered Shifts
-          </label>
+              {isModerator && (
+                <button
+                  type="button"
+                  onClick={() => setShowModTools(v => !v)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showModTools
+                    ? 'bg-amber-100 text-amber-800 border-amber-400'
+                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}
+                >
+                  Moderator Controls {showModTools ? '▴' : '▾'}
+                </button>
+              )}
+
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border">
+                <input
+                  type="checkbox"
+                  checked={showCovered}
+                  onChange={(e) => setShowCovered(e.target.checked)}
+                  className="rounded text-rose-500 focus:ring-rose-500 cursor-pointer"
+                />
+                Show Covered Shifts
+              </label>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Create-request inline form */}
-      {showCreateForm && (
+      {/* Collapsible moderator tools row — keeps the main header compact,
+          especially on mobile. */}
+      {isModerator && showModTools && !cancelMode && (
+        <div className="flex items-center gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded-lg p-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (showCreateForm && onBehalfMode) { resetCreateState() } else {
+                resetCreateState()
+                setShowCreateForm(true)
+                setOnBehalfMode(true)
+              }
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
+          >
+            {showCreateForm && onBehalfMode ? '✕ Cancel' : '+ Request Cover on Behalf'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetCreateState()
+              setCancelMode(true)
+            }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-rose-600 border-rose-300 hover:bg-rose-100 transition-colors"
+          >
+            ✕ Cancel Someone's Cover
+          </button>
+        </div>
+      )}
+
+      {/* Create-request inline form (self or on-behalf) */}
+      {showCreateForm && !cancelMode && (
         <form
           ref={createFormRef}
           onSubmit={handleCreateSubmit}
-          className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col gap-3"
+          className={`border rounded-lg p-4 flex flex-col gap-3 ${onBehalfMode ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}
         >
-          <p className="text-xs font-semibold text-slate-600">Select one of your upcoming shifts and the hours you need covered:</p>
+          {onBehalfMode ? (
+            <p className="text-xs font-semibold text-amber-700">
+              Posting a cover request ON BEHALF of another member
+            </p>
+          ) : (
+            <p className="text-xs font-semibold text-slate-600">Select one of your upcoming shifts and the hours you need covered:</p>
+          )}
 
           {createError && (
             <p className="text-[11px] font-semibold text-rose-600">{createError}</p>
           )}
 
-          <select
-            value={selectedShiftId}
-            onChange={handleShiftSelect}
-            required
-            className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-400"
-          >
-            <option value="">— choose a shift —</option>
-            {userShifts.map(s => (
-              <option key={s.assignmentId} value={s.assignmentId}>{s.label}</option>
-            ))}
-          </select>
+          {/* On-behalf step 1: pick the member (searchable) */}
+          {onBehalfMode && (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={e => setMemberSearch(e.target.value)}
+                placeholder="Search member by name…"
+                className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              />
+              <select
+                value={targetMemberId}
+                onChange={e => {
+                  setTargetMemberId(e.target.value)
+                  setSelectedShiftId('')
+                  setCoverStart('')
+                  setCoverEnd('')
+                }}
+                required
+                className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              >
+                <option value="">— choose a member —</option>
+                {matchingMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.lastName}, {m.firstName}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Shift picker — identical for both modes, just a different pool */}
+          {(!onBehalfMode || targetMemberId) && (
+            <select
+              value={selectedShiftId}
+              onChange={handleShiftSelect}
+              required
+              className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-400"
+            >
+              <option value="">
+                {shiftPool.length === 0 ? '— no visible shifts for this member —' : '— choose a shift —'}
+              </option>
+              {shiftPool.map(s => (
+                <option key={s.assignmentId} value={s.assignmentId}>{s.label}</option>
+              ))}
+            </select>
+          )}
 
           {selectedShiftId && (
             <div className="flex flex-wrap items-end gap-3">
@@ -252,6 +410,7 @@ export default function RequestsBoard({ requests, activeUserId, userShifts }: Re
               <StandInRequestItem
                 request={request}
                 activeUserId={activeUserId}
+                cancelMode={cancelMode}
               />
             </div>
           ))}

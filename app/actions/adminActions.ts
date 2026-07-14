@@ -23,6 +23,7 @@ export async function updateMember(adminId: string, memberId: string, data: {
   zoneType?: string
   isActive?: boolean
   isAdmin?: boolean
+  isModerator?: boolean
   isDriver?: boolean
   isOfficer?: boolean
   expectedHoursPerPeriod?: number | null

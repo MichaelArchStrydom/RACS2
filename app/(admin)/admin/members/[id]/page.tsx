@@ -80,6 +80,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                 zoneType: fd.get('zoneType') as string,
                 isActive: fd.get('isActive') === 'on',
                 isAdmin: fd.get('isAdmin') === 'on',
+                isModerator: fd.get('isModerator') === 'on',
                 expectedHoursPerPeriod: fd.get('expectedHours') ? Number(fd.get('expectedHours')) : null,
               })
             }}
@@ -134,6 +135,10 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" name="isAdmin" defaultChecked={member.isAdmin} className="rounded" />
                 Admin access
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" name="isModerator" defaultChecked={member.isModerator} className="rounded" />
+                Moderator
               </label>
             </div>
 

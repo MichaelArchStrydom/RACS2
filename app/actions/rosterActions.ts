@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { setNZHours } from '@/lib/timezone'
 import { ALREADY_ACTIONED } from '@/lib/errors'
+import { getCurrentMember } from '@/lib/auth'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -10,6 +11,17 @@ export async function createStandInRequest(
   startTime: Date,
   endTime: Date
 ) {
+  // AUTHZ: previously this trusted requestedById straight off the wire — any
+  // logged-in user could post a request under someone else's name. Now the
+  // real session decides: you may request for yourself, or for anyone if
+  // you're an admin/moderator (the "on behalf" feature).
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+  const isMod = caller.isAdmin || caller.isModerator
+  if (requestedById !== caller.id && !isMod) {
+    throw new Error('You can only request cover for your own shifts.')
+  }
+
   const assignment = await db.shiftAssignment.findUnique({
     where: { id: assignmentId }
   })
@@ -23,7 +35,104 @@ export async function createStandInRequest(
       startTime: new Date(startTime),
       endTime: new Date(endTime),
       status: "PENDING",
-      requestType: "COVER"
+      requestType: "COVER",
+      createdById: caller.id, // audit: who actually posted it
+    }
+  })
+
+  revalidatePath('/')
+}
+
+// Moderator/admin cancel of someone's PENDING request, from the roster
+// board's cancel mode. The selected HH:MM window defines WHICH PORTION to
+// cancel (defaults to the whole request in the UI = full cancel); any
+// uncancelled before/after portion is recreated as a fresh PENDING request —
+// the same leftover-slice approach acceptStandInRequest uses for partial
+// accepts. A PENDING request has never modified any ShiftAssignment, so
+// cancelling needs no assignment unwind: flipping status alone means the
+// shift simply stays with (returns to) whoever requested the cover.
+export async function moderatorCancelStandInRequest(
+  requestId: string,
+  selectedStartStr: string,
+  selectedEndStr: string
+) {
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+  if (!caller.isAdmin && !caller.isModerator) {
+    throw new Error('Unauthorised: moderator or admin access required')
+  }
+
+  const request = await db.standInRequest.findUnique({ where: { id: requestId } })
+  if (!request) throw new Error('Request not found')
+  if (request.status !== 'PENDING') throw new Error(ALREADY_ACTIONED)
+
+  const [shours, smin] = selectedStartStr.split(':').map(Number)
+  const [ehours, emin] = selectedEndStr.split(':').map(Number)
+  if ([shours, smin, ehours, emin].some(n => Number.isNaN(n))) {
+    throw new Error('Invalid time input')
+  }
+
+  // Same NZ-wall-clock parsing + overnight rollover as acceptStandInRequest:
+  // both times anchor on the request's start-day, and if end <= start it
+  // rolls to the next day.
+  const cancelStart = setNZHours(new Date(request.startTime), shours, smin)
+  const cancelEnd = setNZHours(new Date(request.startTime), ehours, emin)
+  if (cancelEnd.getTime() <= cancelStart.getTime()) {
+    cancelEnd.setTime(cancelEnd.getTime() + 24 * 60 * 60 * 1000)
+  }
+
+  const origStart = new Date(request.startTime)
+  const origEnd = new Date(request.endTime)
+
+  // Clamp the cancel window to the request itself — cancelling outside the
+  // request's own span is meaningless.
+  const effStart = new Date(Math.max(origStart.getTime(), cancelStart.getTime()))
+  const effEnd = new Date(Math.min(origEnd.getTime(), cancelEnd.getTime()))
+  if (effStart.getTime() >= effEnd.getTime()) {
+    throw new Error('Selected times do not overlap this request.')
+  }
+
+  await db.$transaction(async (tx) => {
+    // Conditional claim — if someone accepted/cancelled it a moment ago,
+    // count is 0 and we roll back instead of double-actioning.
+    const claim = await tx.standInRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: {
+        startTime: effStart,
+        endTime: effEnd,
+        status: 'CANCELLED',
+        cancelledById: caller.id, // audit: who cancelled it
+      }
+    })
+    if (claim.count === 0) throw new Error(ALREADY_ACTIONED)
+
+    // Leftover slices outside the cancelled window stay PENDING, keeping the
+    // original requester and creator attribution.
+    if (origStart.getTime() < effStart.getTime()) {
+      await tx.standInRequest.create({
+        data: {
+          slotId: request.slotId,
+          requestedById: request.requestedById,
+          startTime: origStart,
+          endTime: effStart,
+          status: 'PENDING',
+          requestType: request.requestType,
+          createdById: request.createdById,
+        }
+      })
+    }
+    if (effEnd.getTime() < origEnd.getTime()) {
+      await tx.standInRequest.create({
+        data: {
+          slotId: request.slotId,
+          requestedById: request.requestedById,
+          startTime: effEnd,
+          endTime: origEnd,
+          status: 'PENDING',
+          requestType: request.requestType,
+          createdById: request.createdById,
+        }
+      })
     }
   })
 
