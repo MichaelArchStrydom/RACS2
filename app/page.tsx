@@ -137,16 +137,8 @@ export default async function HomePage({ searchParams }: PageProps) {
             */}
                 <div className="flex items-center gap-2">
                   <NavMenuButton />
-                  {/* ADMIN PORTAL BRIDGE LINK */}
-                  {allMembers.find(m => m.id === activeUserId)?.isAdmin && (
-                    <Link
-                      href={`/admin?user=${activeUserId}`}
-                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors mr-2 flex items-center gap-1"
-                    >
-                      Admin Portal
-                    </Link>
-                  )}
                 </div>
+                <h1 className="text-2xl font-bold text-slate-800">RACS2</h1>
                 <div className="flex items-center gap-0 bg-slate-50 border border-slate-200 px-3 py-1 rounded-lg">
                   <div className="flex flex-col">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged In As</span>
@@ -208,7 +200,7 @@ export default async function HomePage({ searchParams }: PageProps) {
           </div>
           <AnnouncementsPanel announcements={allAnnouncements} activeUserId={activeUserId} />
         </AnnouncementsProvider>
-        <NavMenuPanel />
+        <NavMenuPanel isAdmin={currentMember.isAdmin} userId={currentMember.id} />
       </NavMenuProvider>
     </main>
   );

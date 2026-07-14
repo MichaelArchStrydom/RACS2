@@ -51,12 +51,7 @@ export default async function AdminDashboard({ searchParams }: PageProps) {
   ]
 
   return (
-    <div className="space-y-8 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Admin Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-1">Logged in as {adminMember.firstName} {adminMember.lastName}</p>
-      </div>
-
+    <div className="space-y-8">
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(s => (

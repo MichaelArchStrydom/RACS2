@@ -38,3 +38,7 @@ export function useNavMenu() {
   if (!ctx) throw new Error('useNavMenu must be used within NavMenuProvider')
   return ctx
 }
+
+export function navAdmin(navLinks) {
+  return navLinks
+}
