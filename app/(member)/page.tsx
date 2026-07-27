@@ -9,6 +9,7 @@ import { AnnouncementsProvider } from '@/components/announcements/AnnouncementsC
 import AnnouncementsPreview from '@/components/announcements/AnnouncementsPreview'
 import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
 import { RosterInteractionProvider } from '@/components/roster/RosterInteractionContext'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface PageProps {
   searchParams: Promise<{ date?: string }>
@@ -174,7 +175,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 href={prevLink}
                 className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               >
-                ← 7 Days
+                <ChevronLeft className="w-3.5 h-3.5" /> 7 Days
               </Link>
 
               <span className="text-xs text-slate-400 font-mono font-medium px-2 sm:inline">
@@ -185,7 +186,7 @@ export default async function HomePage({ searchParams }: PageProps) {
                 href={nextLink}
                 className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               >
-                7 Days →
+                7 Days <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
             <RosterGrid

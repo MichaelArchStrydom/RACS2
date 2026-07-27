@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { addCrew, updateCrew, moveMemberToCrew } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import { TriangleAlert } from 'lucide-react'
 
 interface PageProps {
   searchParams: Promise<{ user?: string }>
@@ -67,7 +68,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
       {/* Unassigned members */}
       {unassignedMembers.length > 0 && (
         <details className="px-5 py-4 bg-amber-50 border border-amber-200 rounded-xl">
-          <summary className="cursor-pointer text-sm font-semibold text-amber-800 hover:text-rose-600" >⚠️ Crewless Members ({unassignedMembers.length})</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-amber-800 hover:text-rose-600 inline-flex items-center gap-1.5" ><TriangleAlert className="w-4 h-4" /> Crewless Members ({unassignedMembers.length})</summary>
           <div className="space-y-2">
             {unassignedMembers.map((m: any) => (
               <form

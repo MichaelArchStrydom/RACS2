@@ -4,6 +4,10 @@ import Link from 'next/link'
 import { useNavMenu } from './NavMenuContext'
 import { logoutAction } from '@/app/actions/authActions'
 import { useBodyScrollLock } from '@/components/useBodyScrollLock'
+import {
+  X, LayoutDashboard, Users, GraduationCap, UsersRound, Truck,
+  Calendar, Megaphone, Palmtree, Settings, LayoutGrid, CircleUserRound, Phone, BarChart3,
+} from 'lucide-react'
 
 interface NavMenuPanelProps {
   isAdmin: boolean
@@ -11,15 +15,15 @@ interface NavMenuPanelProps {
   memberName: string
 }
 export const AdminNavLinks = [
-  { href: '/admin', label: 'Admin Dashboard', icon: '🎛️' },
-  { href: '/admin/members', label: 'Members', icon: '🧑‍🚒' },
-  { href: '/admin/qualifications', label: 'Qualifications', icon: '🎓' },
-  { href: '/admin/crews', label: 'Crews', icon: '👥' },
-  { href: '/admin/appliances', label: 'Appliances', icon: '🚒' },
-  { href: '/admin/holidays', label: 'Public Holidays', icon: '📅' },
-  { href: '/admin/announcements', label: 'Announcements', icon: '📢' },
-  { href: '/admin/leave', label: 'Leave', icon: '🏖️' },
-  { href: '/admin/roster', label: 'Roster Tools', icon: '⚙️' },
+  { href: '/admin', label: 'Admin Dashboard', icon: LayoutDashboard },
+  { href: '/admin/members', label: 'Members', icon: Users },
+  { href: '/admin/qualifications', label: 'Qualifications', icon: GraduationCap },
+  { href: '/admin/crews', label: 'Crews', icon: UsersRound },
+  { href: '/admin/appliances', label: 'Appliances', icon: Truck },
+  { href: '/admin/holidays', label: 'Public Holidays', icon: Calendar },
+  { href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+  { href: '/admin/leave', label: 'Leave', icon: Palmtree },
+  { href: '/admin/roster', label: 'Roster Tools', icon: Settings },
 ]
 export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPanelProps) {
   const { isOpen, close } = useNavMenu()
@@ -27,10 +31,10 @@ export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPan
   const userQuery = `?user=${userId}`
 
   const navLinks = [
-    { href: '/', label: 'Roster', icon: '🗓️' },
-    { href: '/profile', label: 'Profile & Settings', icon: '👤' },
-    { href: '/contacts', label: 'Contacts', icon: '📞' },
-    { href: '/stats', label: 'Stats', icon: '📊' },
+    { href: '/', label: 'Roster', icon: LayoutGrid },
+    { href: '/profile', label: 'Profile & Settings', icon: CircleUserRound },
+    { href: '/contacts', label: 'Contacts', icon: Phone },
+    { href: '/stats', label: 'Stats', icon: BarChart3 },
   ]
 
   return (
@@ -50,7 +54,7 @@ export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPan
       >
         <div className="p-4 border-b flex items-center justify-between shrink-0">
           <h2 className="text-xl font-bold text-slate-800">RACS 2</h2>
-          <button onClick={close} className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1">✕</button>
+          <button onClick={close} className="text-slate-400 hover:text-slate-700 px-1"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-4 border-b bg-slate-50 flex items-center justify-between shrink-0">
@@ -76,7 +80,7 @@ export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPan
               onClick={close}
               className="flex items-start gap-3 px-3 py-3 rounded-lg hover:bg-slate-50 transition-colors"
             >
-              <span className="text-lg shrink-0">{item.icon}</span>
+              <item.icon className="w-5 h-5 shrink-0 text-slate-500" />
               <span className="flex flex-col">
                 <span className="text-sm font-semibold text-slate-800">{item.label}</span>
               </span>
@@ -92,7 +96,7 @@ export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPan
                   onClick={close}
                   className="flex items-start gap-3 px-3 py-3 rounded-lg hover:bg-amber-50 transition-colors"
                 >
-                  <span className="text-lg shrink-0">{item.icon}</span>
+                  <item.icon className="w-5 h-5 shrink-0 text-slate-500" />
                   <span className="flex flex-col">
                     <span className="text-sm font-semibold text-slate-800">{item.label}</span>
                   </span>

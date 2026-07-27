@@ -1,5 +1,7 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
+
 interface ClearRosterButtonProps {
   defaultStart: string;
   defaultEnd: string;
@@ -32,9 +34,9 @@ export default function ClearRosterButton({ defaultStart, defaultEnd, userId, cl
       <div className="flex items-end">
         <button
           type="submit"
-          className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg transition-colors"
+          className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg transition-colors"
         >
-          🗑 Clear Range
+          <Trash2 className="w-4 h-4" /> Clear Range
         </button>
       </div>
     </form>

@@ -6,6 +6,7 @@ import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/Spinner'
 import { useRosterInteraction } from './RosterInteractionContext'
+import { TriangleAlert, CircleCheck } from 'lucide-react'
 
 
 interface RosterCellProps {
@@ -175,9 +176,9 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
-                    className="w-full h-full text-[10px] font-bold tracking-wide"
+                    className="w-full h-full text-[10px] font-bold tracking-wide inline-flex items-center justify-center gap-1"
                   >
-                    ⚠️ Request Cover
+                    <TriangleAlert className="w-3 h-3" /> Request Cover
                   </button>
                 ) : (
                   <form
@@ -238,9 +239,9 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
-                    className="w-full h-full text-[10px] font-bold tracking-wide"
+                    className="w-full h-full text-[10px] font-bold tracking-wide inline-flex items-center justify-center gap-1"
                   >
-                    ✅ Pick Up Cover
+                    <CircleCheck className="w-3 h-3" /> Pick Up Cover
                   </button>
                 ) : (
                   <form
@@ -286,9 +287,9 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
                 {showTimePicker !== assignment.id ? (
                   <button
                     onClick={() => setShowTimePicker(assignment.id)}
-                    className="w-full h-full text-[10px] font-bold tracking-wide"
+                    className="w-full h-full text-[10px] font-bold tracking-wide inline-flex items-center justify-center gap-1"
                   >
-                    ✅ Retract Cover
+                    <CircleCheck className="w-3 h-3" /> Retract Cover
                   </button>
                 ) : (
                   <form

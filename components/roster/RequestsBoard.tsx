@@ -7,6 +7,7 @@ import { createStandInRequest } from '@/app/actions/rosterActions'
 import { normalizeTimeInput } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
 import { useRosterInteraction } from '@/components/roster/RosterInteractionContext'
+import { Check, X, Shield, ChevronUp, ChevronDown } from 'lucide-react'
 
 interface UserShift {
   assignmentId: string
@@ -200,9 +201,9 @@ export default function RequestsBoard({
             <button
               type="button"
               onClick={() => setCancelMode(false)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100 transition-colors"
+              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100 transition-colors"
             >
-              ✓ End Edit Mode
+              <Check className="w-3.5 h-3.5" /> End Edit Mode
             </button>
           ) : (
             <>
@@ -216,9 +217,9 @@ export default function RequestsBoard({
                       setShowCreateForm(true)
                     }
                   }}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
                 >
-                  {showCreateForm && !onBehalfMode ? '✕ Cancel' : '+ Request Cover'}
+                  {showCreateForm && !onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover'}
                 </button>
               )}
 
@@ -226,11 +227,11 @@ export default function RequestsBoard({
                 <button
                   type="button"
                   onClick={() => setShowModTools(v => !v)}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showModTools
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showModTools
                     ? 'bg-amber-100 text-amber-800 border-amber-400'
                     : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}
                 >
-                  Moderator Controls {showModTools ? '▴' : '▾'}
+                  <Shield className="w-3.5 h-3.5" /> Moderator Controls {showModTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
               )}
 
@@ -261,9 +262,9 @@ export default function RequestsBoard({
                 setOnBehalfMode(true)
               }
             }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
           >
-            {showCreateForm && onBehalfMode ? '✕ Cancel' : '+ Request Cover on Behalf'}
+            {showCreateForm && onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover on Behalf'}
           </button>
           <button
             type="button"
@@ -271,9 +272,9 @@ export default function RequestsBoard({
               resetCreateState()
               setCancelMode(true)
             }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-rose-600 border-rose-300 hover:bg-rose-100 transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-rose-600 border-rose-300 hover:bg-rose-100 transition-colors"
           >
-            ✕ Cancel Someone's Cover
+            <X className="w-3.5 h-3.5" /> Cancel Someone's Cover
           </button>
         </div>
       )}

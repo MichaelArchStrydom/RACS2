@@ -6,6 +6,7 @@ import { acceptStandInRequest, moderatorCancelStandInRequest } from '@/app/actio
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { formatNZTime, normalizeTimeInput } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
+import { Trash2, Check } from 'lucide-react'
 
 interface StandInRequestItemProps {
   request: any
@@ -148,13 +149,14 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
                     : 'bg-amber-500 hover:bg-amber-600 text-white'}`}
             >
               {isPending && <Spinner className="w-3.5 h-3.5" />}
-              {isPending ? 'Processing...' : cancelMode ? '🗑 Delete Request' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
+              {!isPending && cancelMode && <Trash2 className="w-3.5 h-3.5" />}
+              {isPending ? 'Processing...' : cancelMode ? 'Delete Request' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
             </button>
           </div>
         </form>
       ) : (
         <span className="inline-flex items-center gap-1 text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-200">
-          ✓ Covered by {request.coveredBy?.lastName}
+          <Check className="w-3.5 h-3.5" /> Covered by {request.coveredBy?.lastName}
         </span>
       )}
     </div>

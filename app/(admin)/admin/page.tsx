@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth'
+import { ArrowRight, Settings, Palmtree, Users, Calendar } from 'lucide-react'
 
 
 interface PageProps {
@@ -74,7 +75,7 @@ export default async function AdminDashboard({ searchParams }: PageProps) {
         <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">Upcoming Public Holidays</h2>
-            <Link href={`/admin/holidays?user=${userId}`} className="text-xs text-rose-600 hover:underline">Manage →</Link>
+            <Link href={`/admin/holidays?user=${userId}`} className="inline-flex items-center gap-0.5 text-xs text-rose-600 hover:underline">Manage <ArrowRight className="w-3 h-3" /></Link>
           </div>
           {upcomingHolidays.length === 0 ? (
             <p className="text-xs text-slate-400 italic">None recorded</p>
@@ -96,7 +97,7 @@ export default async function AdminDashboard({ searchParams }: PageProps) {
         <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">Recent Hour Adjustments</h2>
-            <Link href={`/admin/members?user=${userId}`} className="text-xs text-rose-600 hover:underline">View Members →</Link>
+            <Link href={`/admin/members?user=${userId}`} className="inline-flex items-center gap-0.5 text-xs text-rose-600 hover:underline">View Members <ArrowRight className="w-3 h-3" /></Link>
           </div>
           {recentLedger.length === 0 ? (
             <p className="text-xs text-slate-400 italic">No ledger entries yet</p>
@@ -119,10 +120,10 @@ export default async function AdminDashboard({ searchParams }: PageProps) {
       <section className="bg-white rounded-xl border shadow-sm p-5">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Actions</h2>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/admin/roster?user=${userId}`} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors">⚙️ Generate Roster</Link>
-          <Link href={`/admin/leave?user=${userId}`} className="px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition-colors">🏖️ Review Leave</Link>
-          <Link href={`/admin/members?user=${userId}`} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors">🧑‍🚒 Manage Members</Link>
-          <Link href={`/admin/holidays?user=${userId}`} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors">📅 Add Holiday</Link>
+          <Link href={`/admin/roster?user=${userId}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors"><Settings className="w-3.5 h-3.5" /> Generate Roster</Link>
+          <Link href={`/admin/leave?user=${userId}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition-colors"><Palmtree className="w-3.5 h-3.5" /> Review Leave</Link>
+          <Link href={`/admin/members?user=${userId}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"><Users className="w-3.5 h-3.5" /> Manage Members</Link>
+          <Link href={`/admin/holidays?user=${userId}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors"><Calendar className="w-3.5 h-3.5" /> Add Holiday</Link>
         </div>
       </section>
     </div>

@@ -12,6 +12,7 @@ import {
 import { formatNZTime } from '@/lib/timezone'
 import Spinner from '@/components/Spinner'
 import { useBodyScrollLock } from '@/components/useBodyScrollLock'
+import { X } from 'lucide-react'
 
 interface Receipt {
   readAt: Date | string | null
@@ -73,7 +74,7 @@ export default function AnnouncementsPanel({ announcements, activeUserId }: Prop
       >
         <div className="p-4 border-b flex items-center justify-between shrink-0">
           <h2 className="text-sm font-bold text-slate-800">Announcements</h2>
-          <button onClick={close} className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1">✕</button>
+          <button onClick={close} className="text-slate-400 hover:text-slate-700 px-1"><X className="w-5 h-5" /></button>
         </div>
 
         <label className="flex items-center gap-2 text-xs font-medium text-slate-600 px-4 py-2 border-b cursor-pointer shrink-0">

@@ -9,6 +9,7 @@
 
 import { useActionState } from 'react'
 import { loginAction, type LoginState } from '@/app/actions/authActions'
+import { TriangleAlert } from 'lucide-react'
 
 export default function LoginForm() {
   const [state, formAction, isPending] = useActionState<LoginState, FormData>(loginAction, null)
@@ -34,7 +35,7 @@ export default function LoginForm() {
               role="alert"
               className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium px-4 py-3 rounded-lg"
             >
-              <span>⚠️</span>
+              <TriangleAlert className="w-4 h-4 shrink-0" />
               <span>{state.error}</span>
             </div>
           )}

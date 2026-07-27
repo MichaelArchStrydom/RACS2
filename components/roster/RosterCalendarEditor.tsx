@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { getMonthGridDateStrings, addMonthsToMonthString } from '@/lib/timezone'
 import { applyRosterCalendarChanges, getRosterCalendarMonth, type RosterCalendarChange } from '@/app/actions/adminActions'
 import Spinner from '@/components/Spinner'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import RosterCalendarDayCell from './RosterCalendarDayCell'
 import RosterCalendarDetailPanel from './RosterCalendarDetailPanel'
 import type { CalendarSlot, MonthSlotsByDate, CrewOption, ApplianceOption } from './RosterCalendarTypes'
@@ -159,9 +160,9 @@ export default function RosterCalendarEditor({
           <button
             type="button"
             onClick={() => goToMonth(addMonthsToMonthString(monthStr, -1))}
-            className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+            className="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
           >
-            ← Prev
+            <ChevronLeft className="w-3.5 h-3.5" /> Prev
           </button>
           <span className="whitespace-nowrap flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-500 px-2">
             {monthLabel}
@@ -170,9 +171,9 @@ export default function RosterCalendarEditor({
           <button
             type="button"
             onClick={() => goToMonth(addMonthsToMonthString(monthStr, 1))}
-            className="whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+            className="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors"
           >
-            Next →
+            Next <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

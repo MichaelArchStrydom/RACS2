@@ -4,12 +4,17 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { addMember } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import { Circle, ArrowRight } from 'lucide-react'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; search?: string }>
 }
 
-const ZONE_LABELS: Record<string, string> = { GREEN: '🟢 Green', RED: '🔴 Red', SUBSTITUTE: '🔵 Sub' }
+const ZONE_LABELS: Record<string, { label: string; dotClass: string }> = {
+  GREEN: { label: 'Green', dotClass: 'fill-green-500 text-green-500' },
+  RED: { label: 'Red', dotClass: 'fill-red-500 text-red-500' },
+  SUBSTITUTE: { label: 'Sub', dotClass: 'fill-blue-500 text-blue-500' },
+}
 
 export default async function MembersPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
@@ -122,7 +127,11 @@ export default async function MembersPage({ searchParams }: PageProps) {
                 <td className="px-4 py-3 font-medium text-slate-800">{m.lastName}, {m.firstName}</td>
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{m.rank}</td>
                 <td className="px-4 py-3 text-slate-500 text-xs">{m.crew?.watchName ?? <span className="italic text-slate-300">None</span>}</td>
-                <td className="px-4 py-3 text-xs">{ZONE_LABELS[m.zoneType] ?? m.zoneType}</td>
+                <td className="px-4 py-3 text-xs">
+                  {ZONE_LABELS[m.zoneType]
+                    ? <span className="inline-flex items-center gap-1"><Circle className={`w-2 h-2 ${ZONE_LABELS[m.zoneType].dotClass}`} /> {ZONE_LABELS[m.zoneType].label}</span>
+                    : m.zoneType}
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {m.qualifications.slice(0, 4).map((mq: any) => (
@@ -148,9 +157,9 @@ export default async function MembersPage({ searchParams }: PageProps) {
                 <td className="px-4 py-3 text-right">
                   <Link
                     href={`/admin/members/${m.id}?user=${userId}`}
-                    className="text-xs font-semibold text-rose-600 hover:underline"
+                    className="inline-flex items-center gap-0.5 text-xs font-semibold text-rose-600 hover:underline"
                   >
-                    Edit →
+                    Edit <ArrowRight className="w-3 h-3" />
                   </Link>
                 </td>
               </tr>

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import { ArrowLeft, Check } from 'lucide-react'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -57,7 +58,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-4">
-        <Link href={`/admin/members?user=${userId}`} className="text-sm text-slate-500 hover:text-slate-800">← Members</Link>
+        <Link href={`/admin/members?user=${userId}`} className="inline-flex items-center gap-0.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="w-4 h-4" /> Members</Link>
         <h2 className="text-xl font-bold text-slate-800">{member.firstName} {member.lastName}</h2>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${member.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
           {member.isActive ? 'Active' : 'Inactive'}
@@ -218,12 +219,12 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                   </div>
                   <button
                     type="submit"
-                    className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${hasQual
+                    className={`inline-flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full transition-colors ${hasQual
                       ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
                       : 'bg-slate-100 text-slate-500 hover:bg-green-100 hover:text-green-700'
                       }`}
                   >
-                    {hasQual ? '✓ Awarded' : '+ Award'}
+                    {hasQual ? <><Check className="w-3 h-3" /> Awarded</> : '+ Award'}
                   </button>
                 </form>
               )

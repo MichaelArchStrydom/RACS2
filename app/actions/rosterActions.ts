@@ -43,14 +43,6 @@ export async function createStandInRequest(
   revalidatePath('/')
 }
 
-// Moderator/admin cancel of someone's PENDING request, from the roster
-// board's cancel mode. The selected HH:MM window defines WHICH PORTION to
-// cancel (defaults to the whole request in the UI = full cancel); any
-// uncancelled before/after portion is recreated as a fresh PENDING request —
-// the same leftover-slice approach acceptStandInRequest uses for partial
-// accepts. A PENDING request has never modified any ShiftAssignment, so
-// cancelling needs no assignment unwind: flipping status alone means the
-// shift simply stays with (returns to) whoever requested the cover.
 export async function moderatorCancelStandInRequest(
   requestId: string,
   selectedStartStr: string,

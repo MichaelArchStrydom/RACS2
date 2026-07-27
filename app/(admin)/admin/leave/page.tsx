@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { approveLeave, rejectLeave, cancelLeave, createLeave } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import { Check, X } from 'lucide-react'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; filter?: string }>
@@ -175,8 +176,8 @@ export default async function LeavePage({ searchParams }: PageProps) {
                         <input type="hidden" name="adminId" value={userId} />
                         <input type="hidden" name="leaveId" value={leave.id} />
                         <input name="adminNotes" placeholder="Optional note" className="border rounded-lg px-2 py-1 text-xs w-32" />
-                        <button type="submit" className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg whitespace-nowrap">
-                          ✓ Approve
+                        <button type="submit" className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg whitespace-nowrap">
+                          <Check className="w-3.5 h-3.5" /> Approve
                         </button>
                       </form>
 
@@ -187,8 +188,8 @@ export default async function LeavePage({ searchParams }: PageProps) {
                         <input type="hidden" name="adminId" value={userId} />
                         <input type="hidden" name="leaveId" value={leave.id} />
                         <input name="adminNotes" placeholder="Reason for rejection" className="border rounded-lg px-2 py-1 text-xs w-32" />
-                        <button type="submit" className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold rounded-lg whitespace-nowrap">
-                          ✕ Reject
+                        <button type="submit" className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold rounded-lg whitespace-nowrap">
+                          <X className="w-3.5 h-3.5" /> Reject
                         </button>
                       </form>
                     </>

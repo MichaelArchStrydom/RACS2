@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { createQualification, setQualificationActive } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import { Check } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -114,12 +115,12 @@ export default async function QualificationsPage({ searchParams }: PageProps) {
                 <input type="hidden" name="active" value={q.isActive ? 'false' : 'true'} />
                 <button
                   type="submit"
-                  className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${q.isActive
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full transition-colors ${q.isActive
                     ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
                     : 'bg-slate-100 text-slate-500 hover:bg-green-100 hover:text-green-700'
                     }`}
                 >
-                  {q.isActive ? '✓ Active' : 'Inactive'}
+                  {q.isActive ? <><Check className="w-3 h-3" /> Active</> : 'Inactive'}
                 </button>
               </form>
             </div>

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { generateRoster } from '@/app/actions/adminActions'
 import Spinner from '@/components/Spinner'
+import { X, Settings, PenLine, Shuffle } from 'lucide-react'
 import type { CalendarSlot, CrewOption, ApplianceOption } from './RosterCalendarTypes'
 
 interface RosterCalendarDetailPanelProps {
@@ -104,9 +105,9 @@ export default function RosterCalendarDetailPanel({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1"
+            className="text-slate-400 hover:text-slate-700 px-1"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -120,9 +121,9 @@ export default function RosterCalendarDetailPanel({
               <button
                 type="button"
                 onClick={() => setShowAutogenInput(true)}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors"
               >
-                ⚙️ Autogenerate from here
+                <Settings className="w-4 h-4" /> Autogenerate from here
               </button>
             ) : (
               <div className="flex items-center gap-2 bg-slate-50 border rounded-lg p-3">
@@ -150,16 +151,16 @@ export default function RosterCalendarDetailPanel({
             <button
               type="button"
               onClick={() => setManualMode(true)}
-              className="w-full py-2 bg-white border hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-white border hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg transition-colors"
             >
-              ✍️ Enter manual mode
+              <PenLine className="w-4 h-4" /> Enter manual mode
             </button>
 
             <Link
               href={`/admin/crews?user=${adminId}`}
-              className="w-full text-center py-2 bg-white border hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 w-full text-center py-2 bg-white border hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg transition-colors"
             >
-              🔀 Change crew order
+              <Shuffle className="w-4 h-4" /> Change crew order
             </Link>
           </div>
 

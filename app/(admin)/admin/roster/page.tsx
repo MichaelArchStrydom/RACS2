@@ -6,6 +6,7 @@ import RosterCalendarEditor from '@/components/roster/RosterCalendarEditor'
 import { getRosterCalendarSlotsByDate } from '@/lib/roster-calendar-data'
 import { requireAdmin } from '@/lib/auth'
 import { todayNZDateString, nzMidnightUTC, addDaysToDateString } from '@/lib/timezone'
+import { Check, X, Settings, TriangleAlert, Trash2, RotateCcw } from 'lucide-react'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; success?: string; error?: string; month?: string }>
@@ -61,13 +62,13 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
 
       {/* Feedback banners */}
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
-          ✓ {decodeURIComponent(success)}
+        <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          <Check className="w-4 h-4 shrink-0" /> {decodeURIComponent(success)}
         </div>
       )}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
-          ✕ {decodeURIComponent(error)}
+        <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          <X className="w-4 h-4 shrink-0" /> {decodeURIComponent(error)}
         </div>
       )}
 
@@ -144,8 +145,8 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
           </div>
 
           <div className="flex items-end">
-            <button type="submit" className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors">
-              ⚙️ Generate
+            <button type="submit" className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              <Settings className="w-4 h-4" /> Generate
             </button>
           </div>
         </form>
@@ -154,7 +155,7 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
       {/* Clear roster range */}
       <section className="bg-white rounded-xl border border-rose-100 shadow-sm p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-rose-700">⚠️ Clear Roster Range</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-700"><TriangleAlert className="w-4 h-4" /> Clear Roster Range</h2>
           <p className="text-xs text-slate-400 mt-1">
             Permanently deletes all shift slots, assignments, and stand-in requests within the date range.
             This cannot be undone. Use before regenerating if you want fresh slots.
@@ -227,8 +228,8 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
           </div>
 
           <div className="flex items-end">
-            <button type="submit" className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors">
-              ↺ Clear + Regenerate
+            <button type="submit" className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors">
+              <RotateCcw className="w-4 h-4" /> Clear + Regenerate
             </button>
           </div>
         </form>
