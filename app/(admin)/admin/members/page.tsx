@@ -7,7 +7,7 @@ import { requireAdmin } from '@/lib/auth'
 import { Circle, ArrowRight } from 'lucide-react'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string; search?: string }>
+  searchParams: Promise<{ user?: string; search?: string; success?: string; error?: string }>
 }
 
 const ZONE_LABELS: Record<string, { label: string; dotClass: string }> = {
@@ -20,7 +20,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
 
-  const { user: userId, search } = await searchParams
+  const { user: userId, search, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -46,6 +46,17 @@ export default async function MembersPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
 
       {/* Search */}
@@ -67,16 +78,22 @@ export default async function MembersPage({ searchParams }: PageProps) {
         <form
           action={async (fd: FormData) => {
             'use server'
-            await addMember(fd.get('adminId') as string, {
-              firstName: fd.get('firstName') as string,
-              lastName: fd.get('lastName') as string,
-              email: fd.get('email') as string,
-              rank: fd.get('rank') as string,
-              crewId: fd.get('crewId') as string || null,
-              zoneType: fd.get('zoneType') as string,
-              isDriver: fd.get('isDriver') === 'on',
-              isOfficer: fd.get('isOfficer') === 'on',
-            })
+            try {
+              await addMember(fd.get('adminId') as string, {
+                firstName: fd.get('firstName') as string,
+                lastName: fd.get('lastName') as string,
+                email: fd.get('email') as string,
+                rank: fd.get('rank') as string,
+                crewId: fd.get('crewId') as string || null,
+                zoneType: fd.get('zoneType') as string,
+                isDriver: fd.get('isDriver') === 'on',
+                isOfficer: fd.get('isOfficer') === 'on',
+              })
+              redirect(`/admin/members?user=${fd.get('adminId')}&success=${encodeURIComponent('Member added')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/members?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="px-5 pb-5 grid grid-cols-2 md:grid-cols-3 gap-3"
         >

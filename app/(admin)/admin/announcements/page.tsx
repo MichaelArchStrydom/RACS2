@@ -7,14 +7,14 @@ import { formatNZTime } from '@/lib/timezone'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string }>
+  searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 export default async function AnnouncementsAdminPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
 
-  const { user: userId } = await searchParams
+  const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -27,6 +27,17 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">
         Announcements shown to all members via the announcements panel on the roster board.
       </p>
@@ -37,10 +48,16 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
         <form
           action={async (fd: FormData) => {
             'use server'
-            await createAnnouncement(fd.get('adminId') as string, {
-              title: fd.get('title') as string,
-              body: fd.get('body') as string,
-            })
+            try {
+              await createAnnouncement(fd.get('adminId') as string, {
+                title: fd.get('title') as string,
+                body: fd.get('body') as string,
+              })
+              redirect(`/admin/announcements?user=${fd.get('adminId')}&success=${encodeURIComponent('Announcement posted')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/announcements?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="px-5 pb-5 flex flex-col gap-3"
         >
@@ -67,10 +84,16 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
               <form
                 action={async (fd: FormData) => {
                   'use server'
-                  await updateAnnouncement(fd.get('adminId') as string, fd.get('announcementId') as string, {
-                    title: fd.get('title') as string,
-                    body: fd.get('body') as string,
-                  })
+                  try {
+                    await updateAnnouncement(fd.get('adminId') as string, fd.get('announcementId') as string, {
+                      title: fd.get('title') as string,
+                      body: fd.get('body') as string,
+                    })
+                    redirect(`/admin/announcements?user=${fd.get('adminId')}&success=${encodeURIComponent('Announcement updated')}`)
+                  } catch (e: any) {
+                    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                    redirect(`/admin/announcements?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                  }
                 }}
                 className="space-y-3"
               >
@@ -93,7 +116,16 @@ export default async function AnnouncementsAdminPage({ searchParams }: PageProps
                   <button type="submit" className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg">Save</button>
                 </div>
               </form>
-              <form action={async (fd: FormData) => { 'use server'; await deleteAnnouncement(fd.get('adminId') as string, fd.get('announcementId') as string) }}>
+              <form action={async (fd: FormData) => {
+                'use server'
+                try {
+                  await deleteAnnouncement(fd.get('adminId') as string, fd.get('announcementId') as string)
+                  redirect(`/admin/announcements?user=${fd.get('adminId')}&success=${encodeURIComponent('Announcement removed')}`)
+                } catch (e: any) {
+                  if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                  redirect(`/admin/announcements?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                }
+              }}>
                 <input type="hidden" name="adminId" value={userId} />
                 <input type="hidden" name="announcementId" value={a.id} />
                 <button type="submit" className="text-xs text-rose-500 hover:text-rose-700 font-semibold">Delete</button>

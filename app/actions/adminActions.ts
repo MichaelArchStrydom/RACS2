@@ -2,8 +2,9 @@
 
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
-import { hashPassword, revokeAllSessionsForMember } from '@/lib/auth'
-import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail } from '@/lib/sanitize'
+import { hashPassword } from '@/lib/auth'
+import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeText, sanitizeLongText } from '@/lib/sanitize'
+import { ALREADY_ACTIONED } from '@/lib/errors'
 
 // ─── AUTH GUARD ───────────────────────────────────────────────────────────────
 // Every action calls this first. Pass the activeUserId from the form.
@@ -115,13 +116,18 @@ export async function resetMemberPassword(adminId: string, memberId: string, new
   if (newPassword.length > 128) throw new Error('New password must be under 128 characters.')
 
   const hash = await hashPassword(newPassword)
-  await db.member.update({
-    where: { id: memberId },
-    data: { password: hash, passwordUpdatedAt: new Date() },
+
+  // Atomic: the password change and session revocation must succeed or fail
+  // together — otherwise a connection blip between the two could leave the
+  // password changed but old sessions still valid, defeating the point.
+  await db.$transaction(async (tx) => {
+    await tx.member.update({
+      where: { id: memberId },
+      data: { password: hash, passwordUpdatedAt: new Date() },
+    })
+    await tx.session.deleteMany({ where: { memberId } })
   })
 
-  // Force the member to re-authenticate everywhere with the new password
-  await revokeAllSessionsForMember(memberId)
   revalidatePath(`/admin/members/${memberId}`)
 }
 
@@ -138,34 +144,22 @@ export async function setMemberQualification(adminId: string, memberId: string, 
   const qual = await db.qualification.findUnique({ where: { key: qualKey } })
   if (!qual) throw new Error(`Unknown qualification: ${qualKey}`)
 
-  const existing = await db.memberQualification.findUnique({
-    where: { memberId_qualificationId: { memberId, qualificationId: qual.id } }
-  })
+  // Atomic: upsert is race-safe on its own (backed by the @@unique constraint,
+  // so two concurrent "award" clicks can't both hit a `create` and crash with
+  // a P2002 conflict the way a manual findUnique-then-create could) — wrapped
+  // in a transaction together with the isOfficer/isDriver sync so the two
+  // can't desync from each other either.
+  await db.$transaction(async (tx) => {
+    await tx.memberQualification.upsert({
+      where: { memberId_qualificationId: { memberId, qualificationId: qual.id } },
+      update: { isActive: active },
+      create: { memberId, qualificationId: qual.id, isActive: active },
+    })
 
-  if (active) {
-    if (existing) {
-      await db.memberQualification.update({
-        where: { memberId_qualificationId: { memberId, qualificationId: qual.id } },
-        data: { isActive: true }
-      })
-    } else {
-      await db.memberQualification.create({
-        data: { memberId, qualificationId: qual.id, isActive: true }
-      })
-    }
     // Keep booleans in sync for the roster engine
-    if (qualKey === 'OFFICER') await db.member.update({ where: { id: memberId }, data: { isOfficer: true } })
-    if (qualKey === 'DRIVER') await db.member.update({ where: { id: memberId }, data: { isDriver: true } })
-  } else {
-    if (existing) {
-      await db.memberQualification.update({
-        where: { memberId_qualificationId: { memberId, qualificationId: qual.id } },
-        data: { isActive: false }
-      })
-    }
-    if (qualKey === 'OFFICER') await db.member.update({ where: { id: memberId }, data: { isOfficer: false } })
-    if (qualKey === 'DRIVER') await db.member.update({ where: { id: memberId }, data: { isDriver: false } })
-  }
+    if (qualKey === 'OFFICER') await tx.member.update({ where: { id: memberId }, data: { isOfficer: active } })
+    if (qualKey === 'DRIVER') await tx.member.update({ where: { id: memberId }, data: { isDriver: active } })
+  })
 
   revalidatePath(`/admin/members/${memberId}`)
 }
@@ -181,12 +175,15 @@ export async function createQualification(adminId: string, data: {
 
   const key = data.key.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
   if (!key) throw new Error('A machine key is required.')
+  const name = sanitizeText(data.name)
+  if (!name) throw new Error('A name is required.')
+  const description = data.description ? sanitizeLongText(data.description) : null
 
   await db.qualification.create({
     data: {
       key,
-      name: data.name,
-      description: data.description || null,
+      name,
+      description,
       affectsRostering: data.affectsRostering,
       enabledRoles: data.enabledRoles,
       isActive: true,
@@ -210,13 +207,17 @@ export async function updateCrew(adminId: string, crewId: string, data: {
   isActive?: boolean
 }) {
   await requireAdmin(adminId)
-  await db.crew.update({ where: { id: crewId }, data })
+  const watchName = data.watchName !== undefined ? sanitizeText(data.watchName) : undefined
+  if (watchName === '') throw new Error('Watch name cannot be empty.')
+  await db.crew.update({ where: { id: crewId }, data: { ...data, watchName } })
   revalidatePath('/admin/crews')
 }
 
 export async function addCrew(adminId: string, watchName: string, crewOrder: number) {
   await requireAdmin(adminId)
-  await db.crew.create({ data: { watchName, crewOrder, isActive: true } })
+  const cleanName = sanitizeText(watchName)
+  if (!cleanName) throw new Error('Watch name is required.')
+  await db.crew.create({ data: { watchName: cleanName, crewOrder, isActive: true } })
   revalidatePath('/admin/crews')
 }
 
@@ -238,7 +239,10 @@ export async function updateAppliance(adminId: string, applianceId: string, data
   notes?: string
 }) {
   await requireAdmin(adminId)
-  await db.appliance.update({ where: { id: applianceId }, data })
+  const name = data.name !== undefined ? sanitizeText(data.name) : undefined
+  if (name === '') throw new Error('Appliance name cannot be empty.')
+  const notes = data.notes !== undefined ? sanitizeLongText(data.notes) : undefined
+  await db.appliance.update({ where: { id: applianceId }, data: { ...data, name, notes } })
   revalidatePath('/admin/appliances')
 }
 
@@ -249,7 +253,9 @@ export async function addAppliance(adminId: string, data: {
   minimumCrew: number
 }) {
   await requireAdmin(adminId)
-  await db.appliance.create({ data: { ...data, isActive: true } })
+  const name = sanitizeText(data.name)
+  if (!name) throw new Error('Appliance name is required.')
+  await db.appliance.create({ data: { ...data, name, isActive: true } })
   revalidatePath('/admin/appliances')
 }
 
@@ -262,7 +268,11 @@ export async function addPublicHoliday(adminId: string, data: {
   notes?: string
 }) {
   await requireAdmin(adminId)
-  await db.publicHoliday.create({ data })
+  if (Number.isNaN(new Date(data.date).getTime())) throw new Error('Invalid date.')
+  const name = sanitizeText(data.name)
+  if (!name) throw new Error('Holiday name is required.')
+  const notes = data.notes ? sanitizeLongText(data.notes) : undefined
+  await db.publicHoliday.create({ data: { ...data, name, notes } })
   revalidatePath('/admin/holidays')
 }
 
@@ -276,30 +286,39 @@ export async function deletePublicHoliday(adminId: string, holidayId: string) {
 
 export async function approveLeave(adminId: string, leaveId: string, adminNotes?: string) {
   await requireAdmin(adminId)
-  await db.memberLeave.update({
-    where: { id: leaveId },
+  // Conditional claim — same guard used for stand-in requests — so two
+  // admins actioning the same pending leave request can't silently overwrite
+  // each other (e.g. one approves, one rejects, moments apart).
+  const result = await db.memberLeave.updateMany({
+    where: { id: leaveId, status: 'PENDING' },
     data: {
       status: 'APPROVED',
       approvedById: adminId,
       approvedAt: new Date(),
-      adminNotes: adminNotes ?? null,
+      adminNotes: adminNotes ? sanitizeLongText(adminNotes) : null,
     }
   })
+  if (result.count === 0) throw new Error(ALREADY_ACTIONED)
   revalidatePath('/admin/leave')
 }
 
 export async function rejectLeave(adminId: string, leaveId: string, adminNotes?: string) {
   await requireAdmin(adminId)
-  await db.memberLeave.update({
-    where: { id: leaveId },
-    data: { status: 'REJECTED', approvedById: adminId, approvedAt: new Date(), adminNotes: adminNotes ?? null }
+  const result = await db.memberLeave.updateMany({
+    where: { id: leaveId, status: 'PENDING' },
+    data: { status: 'REJECTED', approvedById: adminId, approvedAt: new Date(), adminNotes: adminNotes ? sanitizeLongText(adminNotes) : null }
   })
+  if (result.count === 0) throw new Error(ALREADY_ACTIONED)
   revalidatePath('/admin/leave')
 }
 
 export async function cancelLeave(adminId: string, leaveId: string) {
   await requireAdmin(adminId)
-  await db.memberLeave.update({ where: { id: leaveId }, data: { status: 'CANCELLED' } })
+  const result = await db.memberLeave.updateMany({
+    where: { id: leaveId, status: { in: ['PENDING', 'APPROVED'] } },
+    data: { status: 'CANCELLED' }
+  })
+  if (result.count === 0) throw new Error(ALREADY_ACTIONED)
   revalidatePath('/admin/leave')
 }
 
@@ -311,7 +330,16 @@ export async function createLeave(adminId: string, data: {
   notes?: string
 }) {
   await requireAdmin(adminId)
-  await db.memberLeave.create({ data: { ...data, status: 'APPROVED', approvedById: adminId, approvedAt: new Date() } })
+  const startDate = new Date(data.startDate)
+  const endDate = new Date(data.endDate)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error('Invalid start or end date.')
+  }
+  if (endDate < startDate) throw new Error('End date must be on or after the start date.')
+  const notes = data.notes ? sanitizeLongText(data.notes) : undefined
+  await db.memberLeave.create({
+    data: { ...data, startDate, endDate, notes, status: 'APPROVED', approvedById: adminId, approvedAt: new Date() }
+  })
   revalidatePath('/admin/leave')
 }
 
@@ -346,7 +374,9 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
   const start = nzMidnightUTC(startDateStr)
   const end = nzMidnightUTC(addDaysToDateString(endDateStr, 1))
 
-  // Delete in dependency order
+  // Delete in dependency order, atomically — a crash partway through
+  // previously could leave assignments/requests orphaned against slots that
+  // still exist (or vice versa) with no way to detect or repair it.
   const slots = await db.shiftSlot.findMany({
     where: { date: { gte: start, lt: end } },
     select: { id: true }
@@ -354,9 +384,11 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
   const slotIds = slots.map(s => s.id)
 
   if (slotIds.length > 0) {
-    await db.standInRequest.deleteMany({ where: { slotId: { in: slotIds } } })
-    await db.shiftAssignment.deleteMany({ where: { slotId: { in: slotIds } } })
-    await db.shiftSlot.deleteMany({ where: { id: { in: slotIds } } })
+    await db.$transaction([
+      db.standInRequest.deleteMany({ where: { slotId: { in: slotIds } } }),
+      db.shiftAssignment.deleteMany({ where: { slotId: { in: slotIds } } }),
+      db.shiftSlot.deleteMany({ where: { id: { in: slotIds } } }),
+    ])
   }
 
   revalidatePath('/')
@@ -449,12 +481,22 @@ export async function updateSystemConfig(adminId: string, key: string, value: st
 //HOUR LEDGER (manual adjustment) 
 export async function addHourAdjustment(adminId: string, memberId: string, hoursChange: number, notes: string) {
   await requireAdmin(adminId)
-  await db.hourLedgerEntry.create({
-    data: { memberId, hoursChange, reason: 'MANUAL_ADJUSTMENT', notes }
-  })
-  await db.member.update({
-    where: { id: memberId },
-    data: { hourBalance: { increment: hoursChange } }
+  if (typeof hoursChange !== 'number' || Number.isNaN(hoursChange) || !Number.isFinite(hoursChange)) {
+    throw new Error('Hours must be a valid number.')
+  }
+  const cleanNotes = sanitizeLongText(notes)
+
+  // Atomic: the ledger entry (audit trail) and the cached running balance
+  // must move together, or a connection blip between the two leaves them
+  // permanently out of sync with no reconciliation path.
+  await db.$transaction(async (tx) => {
+    await tx.hourLedgerEntry.create({
+      data: { memberId, hoursChange, reason: 'MANUAL_ADJUSTMENT', notes: cleanNotes }
+    })
+    await tx.member.update({
+      where: { id: memberId },
+      data: { hourBalance: { increment: hoursChange } }
+    })
   })
   revalidatePath(`/admin/members/${memberId}`)
 }
@@ -465,8 +507,12 @@ export async function createAnnouncement(adminId: string, data: {
 }) {
   await requireAdmin(adminId)
 
+  const title = sanitizeText(data.title)
+  if (!title) throw new Error('A title is required.')
+  const body = sanitizeLongText(data.body)
+
   await db.announcement.create({
-    data: { ...data, createdById: adminId }
+    data: { title, body, createdById: adminId }
   })
   revalidatePath('/admin/announcements')
   revalidatePath('/')
@@ -478,9 +524,13 @@ export async function updateAnnouncement(adminId: string, announcementId: string
 }) {
   await requireAdmin(adminId)
 
+  const title = data.title !== undefined ? sanitizeText(data.title) : undefined
+  if (title === '') throw new Error('Title cannot be empty.')
+  const body = data.body !== undefined ? sanitizeLongText(data.body) : undefined
+
   await db.announcement.update({
     where: { id: announcementId },
-    data: { ...data, updatedById: adminId }
+    data: { ...data, title, body, updatedById: adminId }
   })
   revalidatePath('/admin/announcements')
   revalidatePath('/')

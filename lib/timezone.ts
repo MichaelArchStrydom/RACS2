@@ -7,42 +7,9 @@
  * UTC cloud host like Vercel.
  */
 
+import { fromZonedTime } from 'date-fns-tz'
+
 export const NZ_TZ = 'Pacific/Auckland'
-
-/**
- * Get the NZ timezone offset in hours for a specific instant.
- * Returns 12 during NZST (winter) and 13 during NZDT (summer DST).
- *
- * Uses Intl.DateTimeFormat to reconstruct the NZ local datetime from a UTC
- * instant, then computes the difference — this handles DST correctly without
- * any hardcoded tables.
- */
-export function getNZOffsetHours(date: Date): number {
-  const fmt = new Intl.DateTimeFormat('en', {
-    timeZone: NZ_TZ,
-    year: 'numeric', month: 'numeric', day: 'numeric',
-    hour: 'numeric', minute: 'numeric', second: 'numeric',
-    hour12: false,
-  })
-
-  const parts = Object.fromEntries(
-    fmt.formatToParts(date).map(p => [p.type, p.value])
-  )
-
-  // hour can be "24" for midnight in some locales — treat as 0
-  const hour = parts.hour === '24' ? 0 : parseInt(parts.hour)
-
-  const nzAsUtcMs = Date.UTC(
-    parseInt(parts.year),
-    parseInt(parts.month) - 1,
-    parseInt(parts.day),
-    hour,
-    parseInt(parts.minute),
-    parseInt(parts.second)
-  )
-
-  return Math.round((nzAsUtcMs - date.getTime()) / 3_600_000)
-}
 
 /**
  * Set hours and minutes on a Date object treating them as NZ local time,
@@ -50,6 +17,18 @@ export function getNZOffsetHours(date: Date): number {
  *
  * Returns a NEW Date — does not mutate the original.
  *
+ * FIX: previously computed the target NZ calendar date correctly, but then
+ * applied a single UTC-offset "snapshot" taken from `date` itself to the
+ * whole result. On the two NZ DST-transition days per year, the offset that
+ * actually applies at hours:minutes can differ from the offset at `date`'s
+ * own instant (e.g. `date` = UTC-midnight-of-day-X, which in NZ terms is
+ * already midday of day X, past that morning's transition) — silently
+ * producing a result 1 hour off, which for a shift-end lookup could
+ * collapse two consecutive shifts onto the same instant (a 0-hour shift
+ * followed by a ~47-hour shift). date-fns-tz's fromZonedTime() is the
+ * purpose-built, DST-correct way to convert "these fields represent wall-
+ * clock time in this zone" into the right UTC instant — it doesn't rely on
+ * a single offset snapshot, so it can't be caught by this pattern of bug.
  */
 export function setNZHours(date: Date, hours: number, minutes: number): Date {
   const dateFmt = new Intl.DateTimeFormat('en-CA', {
@@ -63,8 +42,11 @@ export function setNZHours(date: Date, hours: number, minutes: number): Date {
   const m = parseInt(parts.month)
   const d = parseInt(parts.day)
 
-  const offset = getNZOffsetHours(date)
-  return new Date(Date.UTC(y, m - 1, d, hours - offset, minutes, 0, 0))
+  // These fields are interpreted by fromZonedTime as NZ wall-clock time —
+  // the local Date constructor here is just a plain numeric field carrier,
+  // not a statement about the server's own timezone.
+  const wallClock = new Date(y, m - 1, d, hours, minutes, 0, 0)
+  return fromZonedTime(wallClock, NZ_TZ)
 }
 
 /**

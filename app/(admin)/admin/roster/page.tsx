@@ -43,6 +43,11 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
       orderBy: { date: 'desc' },
       select: { date: true },
     }),
+    // Deliberately unfiltered — "Total Assignments · all time" is meant as a
+    // genuine all-time historical count, not a bounded stat. This is the one
+    // query on this page that can't benefit from an index (Postgres COUNT(*)
+    // with no predicate always scans); acceptable since it's an admin-only,
+    // low-frequency page view, not part of the member-facing hot path.
     db.shiftAssignment.count(),
     db.standInRequest.count({ where: { status: 'PENDING' } }),
     db.memberLeave.count({ where: { status: 'PENDING' } }),

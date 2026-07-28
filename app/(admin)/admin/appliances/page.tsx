@@ -7,14 +7,14 @@ import { requireAdmin } from '@/lib/auth'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string }>
+  searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 export default async function AppliancesPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
 
-  const { user: userId } = await searchParams
+  const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -24,6 +24,17 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">
         Appliance names must exactly match the strings used in the roster engine ("1st Due", "2nd Due").
         Changing a name here does not automatically update existing roster slots — do a roster regeneration afterward.
@@ -35,12 +46,18 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
         <form
           action={async (fd: FormData) => {
             'use server'
-            await addAppliance(fd.get('adminId') as string, {
-              name: fd.get('name') as string,
-              displayOrder: Number(fd.get('displayOrder')),
-              seatCount: Number(fd.get('seatCount')),
-              minimumCrew: Number(fd.get('minimumCrew')),
-            })
+            try {
+              await addAppliance(fd.get('adminId') as string, {
+                name: fd.get('name') as string,
+                displayOrder: Number(fd.get('displayOrder')),
+                seatCount: Number(fd.get('seatCount')),
+                minimumCrew: Number(fd.get('minimumCrew')),
+              })
+              redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance added')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/appliances?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="px-5 pb-5 grid grid-cols-2 gap-3"
         >
@@ -74,14 +91,20 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
             <form
               action={async (fd: FormData) => {
                 'use server'
-                await updateAppliance(fd.get('adminId') as string, fd.get('applianceId') as string, {
-                  name: fd.get('name') as string,
-                  displayOrder: Number(fd.get('displayOrder')),
-                  seatCount: Number(fd.get('seatCount')),
-                  minimumCrew: Number(fd.get('minimumCrew')),
-                  isActive: fd.get('isActive') === 'on',
-                  notes: fd.get('notes') as string || undefined,
-                })
+                try {
+                  await updateAppliance(fd.get('adminId') as string, fd.get('applianceId') as string, {
+                    name: fd.get('name') as string,
+                    displayOrder: Number(fd.get('displayOrder')),
+                    seatCount: Number(fd.get('seatCount')),
+                    minimumCrew: Number(fd.get('minimumCrew')),
+                    isActive: fd.get('isActive') === 'on',
+                    notes: fd.get('notes') as string || undefined,
+                  })
+                  redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance updated')}`)
+                } catch (e: any) {
+                  if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                  redirect(`/admin/appliances?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                }
               }}
               className="space-y-3"
             >

@@ -7,7 +7,7 @@ import { requireAdmin } from '@/lib/auth'
 import { Check, X } from 'lucide-react'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string; filter?: string }>
+  searchParams: Promise<{ user?: string; filter?: string; success?: string; error?: string }>
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -22,7 +22,7 @@ const LEAVE_TYPES = ['ANNUAL', 'SICK', 'UNPAID', 'SPECIAL', 'OTHER']
 export default async function LeavePage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
-  const { user: userId, filter = 'PENDING' } = await searchParams
+  const { user: userId, filter = 'PENDING', success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -53,6 +53,17 @@ export default async function LeavePage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       {/* Create leave (admin-initiated, auto-approved) */}
       <details className="bg-white border rounded-xl shadow-sm">
         <summary className="px-5 py-4 cursor-pointer text-sm font-semibold text-slate-700 hover:text-rose-600">
@@ -61,13 +72,19 @@ export default async function LeavePage({ searchParams }: PageProps) {
         <form
           action={async (fd: FormData) => {
             'use server'
-            await createLeave(fd.get('adminId') as string, {
-              memberId: fd.get('memberId') as string,
-              startDate: new Date(fd.get('startDate') as string),
-              endDate: new Date(fd.get('endDate') as string),
-              leaveType: fd.get('leaveType') as string,
-              notes: (fd.get('notes') as string) || undefined,
-            })
+            try {
+              await createLeave(fd.get('adminId') as string, {
+                memberId: fd.get('memberId') as string,
+                startDate: new Date(fd.get('startDate') as string),
+                endDate: new Date(fd.get('endDate') as string),
+                leaveType: fd.get('leaveType') as string,
+                notes: (fd.get('notes') as string) || undefined,
+              })
+              redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&success=${encodeURIComponent('Leave recorded')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="px-5 pb-5 grid grid-cols-2 md:grid-cols-3 gap-3"
         >
@@ -171,7 +188,13 @@ export default async function LeavePage({ searchParams }: PageProps) {
                     <>
                       <form action={async (fd: FormData) => {
                         'use server'
-                        await approveLeave(fd.get('adminId') as string, fd.get('leaveId') as string, fd.get('adminNotes') as string || undefined)
+                        try {
+                          await approveLeave(fd.get('adminId') as string, fd.get('leaveId') as string, fd.get('adminNotes') as string || undefined)
+                          redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&success=${encodeURIComponent('Leave approved')}`)
+                        } catch (e: any) {
+                          if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                          redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                        }
                       }} className="flex gap-1">
                         <input type="hidden" name="adminId" value={userId} />
                         <input type="hidden" name="leaveId" value={leave.id} />
@@ -183,7 +206,13 @@ export default async function LeavePage({ searchParams }: PageProps) {
 
                       <form action={async (fd: FormData) => {
                         'use server'
-                        await rejectLeave(fd.get('adminId') as string, fd.get('leaveId') as string, fd.get('adminNotes') as string || undefined)
+                        try {
+                          await rejectLeave(fd.get('adminId') as string, fd.get('leaveId') as string, fd.get('adminNotes') as string || undefined)
+                          redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&success=${encodeURIComponent('Leave rejected')}`)
+                        } catch (e: any) {
+                          if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                          redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                        }
                       }} className="flex gap-1">
                         <input type="hidden" name="adminId" value={userId} />
                         <input type="hidden" name="leaveId" value={leave.id} />
@@ -198,7 +227,13 @@ export default async function LeavePage({ searchParams }: PageProps) {
                   {(leave.status === 'PENDING' || leave.status === 'APPROVED') && (
                     <form action={async (fd: FormData) => {
                       'use server'
-                      await cancelLeave(fd.get('adminId') as string, fd.get('leaveId') as string)
+                      try {
+                        await cancelLeave(fd.get('adminId') as string, fd.get('leaveId') as string)
+                        redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&success=${encodeURIComponent('Leave cancelled')}`)
+                      } catch (e: any) {
+                        if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                        redirect(`/admin/leave?user=${fd.get('adminId')}&filter=${filter}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                      }
                     }}>
                       <input type="hidden" name="adminId" value={userId} />
                       <input type="hidden" name="leaveId" value={leave.id} />

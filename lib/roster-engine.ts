@@ -34,9 +34,14 @@ export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { ass
 export async function getMonthlyRosteredHours(memberId: string, memberCrewId: string | null, monthStr: string): Promise<number> {
   if (!memberCrewId) return 0
 
+  // Stable secondary sort on id — if two crews ever share the same
+  // crewOrder value (nothing prevents that), Postgres doesn't guarantee
+  // consistent tie-break ordering across separate queries, which could
+  // otherwise make this function disagree with generateRosterForDateRange
+  // about which crew is "assigned" vs "backup" for a given day.
   const crews = await db.crew.findMany({
     include: { members: { include: { qualifications: { include: { qualification: true } } } } },
-    orderBy: { crewOrder: 'asc' }
+    orderBy: [{ crewOrder: 'asc' }, { id: 'asc' }]
   })
   const memberCrewIndex = crews.findIndex(c => c.id === memberCrewId)
   if (memberCrewIndex === -1) return 0
@@ -142,50 +147,59 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
         }
       }
     },
-    orderBy: { crewOrder: 'asc' }
+    // Stable secondary sort — see the matching comment in
+    // getMonthlyRosteredHours, which relies on this query producing the
+    // exact same crew ordering.
+    orderBy: [{ crewOrder: 'asc' }, { id: 'asc' }]
   })
 
   if (crews.length === 0) throw new Error("No crews found in the database. Please seed first.")
 
-  for (let i = 0; i < daysToGenerate; i++) {
-    const dateStr = addDaysToDateString(startDateStr, i)
-    const [y, m, d] = dateStr.split('-').map(Number)
+  // Wrapped in a transaction: a crash partway through a large bulk
+  // generation (e.g. 90+ days) previously could leave some days with a
+  // ShiftSlot but zero/partial ShiftAssignment rows (an OIC-less truck),
+  // with no way to detect or repair it — now it's all-or-nothing.
+  await db.$transaction(async (tx) => {
+    for (let i = 0; i < daysToGenerate; i++) {
+      const dateStr = addDaysToDateString(startDateStr, i)
+      const [y, m, d] = dateStr.split('-').map(Number)
 
-    // The UTC instant of NZ midnight on this calendar date — this is what
-    // gets stored as ShiftSlot.date.
-    const currentDay = nzMidnightUTC(dateStr)
+      // The UTC instant of NZ midnight on this calendar date — this is what
+      // gets stored as ShiftSlot.date.
+      const currentDay = nzMidnightUTC(dateStr)
 
-    // Stable epoch-day number anchored to the calendar date itself (not the
-    // server's local timezone) so crew rotation is deterministic regardless
-    // of where this runs.
-    const dayIndex = Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24))
+      // Stable epoch-day number anchored to the calendar date itself (not the
+      // server's local timezone) so crew rotation is deterministic regardless
+      // of where this runs.
+      const dayIndex = Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24))
 
-    const { assignedCrewIndex, backupCrewIndex } = getCrewIndicesForDay(dayIndex, crews.length)
+      const { assignedCrewIndex, backupCrewIndex } = getCrewIndicesForDay(dayIndex, crews.length)
 
-    const activeCrew = crews[assignedCrewIndex]
-    const backupCrew = crews[backupCrewIndex]
+      const activeCrew = crews[assignedCrewIndex]
+      const backupCrew = crews[backupCrewIndex]
 
-    const isWeekend = isWeekendDate(dateStr)
-    const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend)
+      const isWeekend = isWeekendDate(dateStr)
+      const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend)
 
-    // Helper function to pull the right people for the seats
-    const assignTruckLineup = async (crew: any, applianceName: string) => {
-      const slot = await db.shiftSlot.create({
-        data: {
-          date: currentDay,
-          appliance: applianceName,
-          roleRequired: 'Full Crew',
-          isWeekend
-        }
-      })
+      // Helper function to pull the right people for the seats
+      const assignTruckLineup = async (crew: any, applianceName: string) => {
+        const slot = await tx.shiftSlot.create({
+          data: {
+            date: currentDay,
+            appliance: applianceName,
+            roleRequired: 'Full Crew',
+            isWeekend
+          }
+        })
 
-      await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd)
+        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
+      }
+
+      // Generate both trucks
+      await assignTruckLineup(activeCrew, '1st Due')
+      await assignTruckLineup(backupCrew, '2nd Due')
     }
-
-    // Generate both trucks
-    await assignTruckLineup(activeCrew, '1st Due')
-    await assignTruckLineup(backupCrew, '2nd Due')
-  }
+  }, { timeout: 30000 })
 
   return { success: true, message: `Successfully generated ${daysToGenerate} days.` }
 }

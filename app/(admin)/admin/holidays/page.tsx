@@ -5,14 +5,14 @@ import { requireAdmin } from '@/lib/auth'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string }>
+  searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 export default async function HolidaysPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
 
-  const { user: userId } = await searchParams
+  const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -25,6 +25,17 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">
         Holidays marked as WEEKEND will be treated like weekend shifts (07:00–07:00) by the roster engine when regenerating.
         Existing slots are not retroactively changed.
@@ -36,12 +47,19 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
         <form
           action={async (fd: FormData) => {
             'use server'
-            await addPublicHoliday(fd.get('adminId') as string, {
-              date: new Date(fd.get('date') as string),
-              name: fd.get('name') as string,
-              shiftType: fd.get('shiftType') as string,
-              notes: (fd.get('notes') as string) || undefined,
-            })
+            try {
+              const name = fd.get('name') as string
+              await addPublicHoliday(fd.get('adminId') as string, {
+                date: new Date(fd.get('date') as string),
+                name,
+                shiftType: fd.get('shiftType') as string,
+                notes: (fd.get('notes') as string) || undefined,
+              })
+              redirect(`/admin/holidays?user=${fd.get('adminId')}&success=${encodeURIComponent(`Added ${name}`)}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/holidays?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="grid grid-cols-2 gap-3"
         >
@@ -84,7 +102,16 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
                   </span>
                   <span className="ml-2 text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{h.shiftType}</span>
                 </div>
-                <form action={async (fd: FormData) => { 'use server'; await deletePublicHoliday(fd.get('adminId') as string, fd.get('holidayId') as string) }}>
+                <form action={async (fd: FormData) => {
+                  'use server'
+                  try {
+                    await deletePublicHoliday(fd.get('adminId') as string, fd.get('holidayId') as string)
+                    redirect(`/admin/holidays?user=${fd.get('adminId')}&success=${encodeURIComponent('Holiday deleted')}`)
+                  } catch (e: any) {
+                    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                    redirect(`/admin/holidays?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                  }
+                }}>
                   <input type="hidden" name="adminId" value={userId} />
                   <input type="hidden" name="holidayId" value={h.id} />
                   <button type="submit" className="text-xs text-rose-500 hover:text-rose-700 font-semibold">Delete</button>
@@ -103,7 +130,16 @@ export default async function HolidaysPage({ searchParams }: PageProps) {
             {[...past].reverse().map(h => (
               <li key={h.id} className="flex items-center justify-between text-sm text-slate-400 py-1.5 border-b border-slate-100 last:border-0">
                 <span>{h.name} · {new Date(h.date).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                <form action={async (fd: FormData) => { 'use server'; await deletePublicHoliday(fd.get('adminId') as string, fd.get('holidayId') as string) }}>
+                <form action={async (fd: FormData) => {
+                  'use server'
+                  try {
+                    await deletePublicHoliday(fd.get('adminId') as string, fd.get('holidayId') as string)
+                    redirect(`/admin/holidays?user=${fd.get('adminId')}&success=${encodeURIComponent('Holiday deleted')}`)
+                  } catch (e: any) {
+                    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                    redirect(`/admin/holidays?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                  }
+                }}>
                   <input type="hidden" name="adminId" value={userId} />
                   <input type="hidden" name="holidayId" value={h.id} />
                   <button type="submit" className="text-xs text-rose-400 hover:text-rose-600">Delete</button>

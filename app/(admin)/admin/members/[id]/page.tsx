@@ -8,7 +8,7 @@ import { ArrowLeft, Check } from 'lucide-react'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ user?: string }>
+  searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 const ZONE_LABELS: Record<string, string> = { GREEN: 'Green Zone', RED: 'Red Zone', SUBSTITUTE: 'Substitute' }
@@ -18,7 +18,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   const activeUserId = admin.id
 
   const { id: memberId } = await params
-  const { user: userId } = await searchParams
+  const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -57,6 +57,17 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <div className="flex items-center gap-4">
         <Link href={`/admin/members?user=${userId}`} className="inline-flex items-center gap-0.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="w-4 h-4" /> Members</Link>
         <h2 className="text-xl font-bold text-slate-800">{member.firstName} {member.lastName}</h2>
@@ -73,17 +84,25 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           <form
             action={async (fd: FormData) => {
               'use server'
-              await updateMember(fd.get('adminId') as string, fd.get('memberId') as string, {
-                firstName: fd.get('firstName') as string,
-                lastName: fd.get('lastName') as string,
-                rank: fd.get('rank') as string,
-                crewId: (fd.get('crewId') as string) || null,
-                zoneType: fd.get('zoneType') as string,
-                isActive: fd.get('isActive') === 'on',
-                isAdmin: fd.get('isAdmin') === 'on',
-                isModerator: fd.get('isModerator') === 'on',
-                expectedHoursPerPeriod: fd.get('expectedHours') ? Number(fd.get('expectedHours')) : null,
-              })
+              const adminId = fd.get('adminId') as string
+              const mId = fd.get('memberId') as string
+              try {
+                await updateMember(adminId, mId, {
+                  firstName: fd.get('firstName') as string,
+                  lastName: fd.get('lastName') as string,
+                  rank: fd.get('rank') as string,
+                  crewId: (fd.get('crewId') as string) || null,
+                  zoneType: fd.get('zoneType') as string,
+                  isActive: fd.get('isActive') === 'on',
+                  isAdmin: fd.get('isAdmin') === 'on',
+                  isModerator: fd.get('isModerator') === 'on',
+                  expectedHoursPerPeriod: fd.get('expectedHours') ? Number(fd.get('expectedHours')) : null,
+                })
+                redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Details saved')}`)
+              } catch (e: any) {
+                if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+              }
             }}
             className="space-y-3"
           >
@@ -151,7 +170,15 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           {member.isActive && (
             <form action={async (fd: FormData) => {
               'use server'
-              await deactivateMember(fd.get('adminId') as string, fd.get('memberId') as string)
+              const adminId = fd.get('adminId') as string
+              const mId = fd.get('memberId') as string
+              try {
+                await deactivateMember(adminId, mId)
+                redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Member deactivated')}`)
+              } catch (e: any) {
+                if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+              }
             }}>
               <input type="hidden" name="adminId" value={userId} />
               <input type="hidden" name="memberId" value={memberId} />
@@ -172,7 +199,15 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           <form
             action={async (fd: FormData) => {
               'use server'
-              await resetMemberPassword(fd.get('adminId') as string, fd.get('memberId') as string, fd.get('newPassword') as string)
+              const adminId = fd.get('adminId') as string
+              const mId = fd.get('memberId') as string
+              try {
+                await resetMemberPassword(adminId, mId, fd.get('newPassword') as string)
+                redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Password reset — sessions revoked')}`)
+              } catch (e: any) {
+                if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+              }
             }}
             className="flex gap-2 items-end"
           >
@@ -200,12 +235,15 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                   key={q.id}
                   action={async (fd: FormData) => {
                     'use server'
-                    await setMemberQualification(
-                      fd.get('adminId') as string,
-                      fd.get('memberId') as string,
-                      fd.get('qualKey') as string,
-                      fd.get('active') === 'true'
-                    )
+                    const adminId = fd.get('adminId') as string
+                    const mId = fd.get('memberId') as string
+                    try {
+                      await setMemberQualification(adminId, mId, fd.get('qualKey') as string, fd.get('active') === 'true')
+                      redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Qualification updated')}`)
+                    } catch (e: any) {
+                      if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                      redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                    }
                   }}
                   className="flex items-center justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0"
                 >
@@ -246,12 +284,17 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           <form
             action={async (fd: FormData) => {
               'use server'
-              await addHourAdjustment(
-                fd.get('adminId') as string,
-                fd.get('memberId') as string,
-                Number(fd.get('hours')),
-                fd.get('notes') as string
-              )
+              const adminId = fd.get('adminId') as string
+              const mId = fd.get('memberId') as string
+              try {
+                const hours = Number(fd.get('hours'))
+                if (Number.isNaN(hours)) throw new Error('Hours must be a valid number.')
+                await addHourAdjustment(adminId, mId, hours, fd.get('notes') as string)
+                redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Hour balance adjusted')}`)
+              } catch (e: any) {
+                if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+              }
             }}
             className="flex gap-2 items-end"
           >

@@ -7,14 +7,14 @@ import { requireAdmin } from '@/lib/auth'
 import { TriangleAlert } from 'lucide-react'
 
 interface PageProps {
-  searchParams: Promise<{ user?: string }>
+  searchParams: Promise<{ user?: string; success?: string; error?: string }>
 }
 
 export default async function CrewsPage({ searchParams }: PageProps) {
   const admin = await requireAdmin()
   const activeUserId = admin.id
 
-  const { user: userId } = await searchParams
+  const { user: userId, success, error } = await searchParams
   if (!userId) redirect('/')
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
@@ -40,6 +40,17 @@ export default async function CrewsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✓ {decodeURIComponent(success)}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium px-4 py-3 rounded-lg">
+          ✕ {decodeURIComponent(error)}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">{allActiveCrews.length} active crews</p>
 
       {/* Add crew */}
@@ -48,7 +59,13 @@ export default async function CrewsPage({ searchParams }: PageProps) {
         <form
           action={async (fd: FormData) => {
             'use server'
-            await addCrew(fd.get('adminId') as string, fd.get('watchName') as string, Number(fd.get('crewOrder')))
+            try {
+              await addCrew(fd.get('adminId') as string, fd.get('watchName') as string, Number(fd.get('crewOrder')))
+              redirect(`/admin/crews?user=${fd.get('adminId')}&success=${encodeURIComponent('Crew added')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/crews?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
           }}
           className="px-5 pb-5 flex gap-3 items-end"
         >
@@ -75,7 +92,13 @@ export default async function CrewsPage({ searchParams }: PageProps) {
                 key={m.id}
                 action={async (fd: FormData) => {
                   'use server'
-                  await moveMemberToCrew(fd.get('adminId') as string, fd.get('memberId') as string, fd.get('crewId') as string || null)
+                  try {
+                    await moveMemberToCrew(fd.get('adminId') as string, fd.get('memberId') as string, fd.get('crewId') as string || null)
+                    redirect(`/admin/crews?user=${fd.get('adminId')}&success=${encodeURIComponent('Member assigned')}`)
+                  } catch (e: any) {
+                    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                    redirect(`/admin/crews?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                  }
                 }}
                 className="flex items-center gap-3"
               >
@@ -106,9 +129,15 @@ export default async function CrewsPage({ searchParams }: PageProps) {
               <form
                 action={async (fd: FormData) => {
                   'use server'
-                  await updateCrew(fd.get('adminId') as string, fd.get('crewId') as string, {
-                    isActive: fd.get('isActive') !== 'true'
-                  })
+                  try {
+                    await updateCrew(fd.get('adminId') as string, fd.get('crewId') as string, {
+                      isActive: fd.get('isActive') !== 'true'
+                    })
+                    redirect(`/admin/crews?user=${fd.get('adminId')}&success=${encodeURIComponent('Crew status updated')}`)
+                  } catch (e: any) {
+                    if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                    redirect(`/admin/crews?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                  }
                 }}
               >
                 <input type="hidden" name="adminId" value={userId} />
@@ -124,10 +153,16 @@ export default async function CrewsPage({ searchParams }: PageProps) {
             <form
               action={async (fd: FormData) => {
                 'use server'
-                await updateCrew(fd.get('adminId') as string, fd.get('crewId') as string, {
-                  watchName: fd.get('watchName') as string,
-                  crewOrder: Number(fd.get('crewOrder')),
-                })
+                try {
+                  await updateCrew(fd.get('adminId') as string, fd.get('crewId') as string, {
+                    watchName: fd.get('watchName') as string,
+                    crewOrder: Number(fd.get('crewOrder')),
+                  })
+                  redirect(`/admin/crews?user=${fd.get('adminId')}&success=${encodeURIComponent('Crew updated')}`)
+                } catch (e: any) {
+                  if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                  redirect(`/admin/crews?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                }
               }}
               className="flex gap-2"
             >

@@ -79,6 +79,8 @@ model Session {
   member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   expiresAt DateTime
+
+  @@index([memberId])
 }
 
 // CREW
@@ -175,6 +177,9 @@ model ShiftSlot {
 
   assignments ShiftAssignment[]
   requests    StandInRequest[]
+
+  @@index([date])
+  @@index([status])
 }
 
 //  SHIFT ASSIGNMENT
@@ -197,6 +202,10 @@ model ShiftAssignment {
 
   historicalRank      String
   historicalWatchName String?
+
+  @@index([slotId])
+  @@index([memberId])
+  @@index([actualMemberId])
 }
 
 //  STAND-IN REQUEST 
@@ -227,6 +236,10 @@ model StandInRequest {
   cancelledById String?
 
   responses StandInResponse[]
+
+  @@index([slotId])
+  @@index([status])
+  @@index([requestedById])
 }
 
 //  STAND-IN RESPONSE
@@ -293,6 +306,9 @@ model MemberLeave {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([status])
 }
 
 // HOUR LEDGER
@@ -320,6 +336,8 @@ model HourLedgerEntry {
   relatedRequestId    String?
 
   recordedAt DateTime @default(now())
+
+  @@index([memberId])
 }
 
 // ROSTER CHANGE SET
@@ -402,6 +420,7 @@ model AnnouncementReceipt {
   archivedAt DateTime?
 
   @@unique([announcementId, memberId])
+  @@index([memberId])
 }
 
 // SYSTEM CONFIG

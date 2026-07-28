@@ -20,6 +20,7 @@ export default function AnnouncementsPreview({ latest, unreadCount }: Props) {
   return (
     <button
       onClick={open}
+      data-scroll-fold
       className="relative w-full text-left bg-white p-3 rounded-xl shadow-sm border flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
     >
       <div className="flex items-center gap-2 min-w-0">
