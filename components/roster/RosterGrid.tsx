@@ -11,7 +11,17 @@ interface RosterGridProps {
 }
 
 export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
-  const roles = ["OIC", "Dvr", "FF1", "FF2", "FF3"];
+
+  // TODO: Make roles a dynamic object array instead of hardcoded for variations in appliances.
+  // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what. 
+
+  const roles: { role: string; label: string }[] = [
+    { role: "OIC", label: "OIC" },
+    { role: "Driver", label: "Dvr" },
+    { role: "FF1", label: "FF1" },
+    { role: "FF2", label: "FF2" },
+    { role: "FF3", label: "FF3" }
+  ];
 
 
   const days = visibleDates.map((date) => {
@@ -46,11 +56,11 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
               </tr>
 
               {/* INDIVIDUAL ROLE ROWS */}
-              {roles.map((role) => (
-                <tr key={`${appliance}-${role}`} className="hover:bg-slate-50/50 transition-colors">
+              {roles.map(roles => (
+                <tr key={`${appliance}-${roles.label}`} className="hover:bg-slate-50/50 transition-colors">
                   <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
                     <div className="flex flex-col">
-                      <span className="text-slate-700 font-semibold">{role}</span>
+                      <span className="text-slate-700 font-semibold">{roles.label}</span>
                       <span className="text-[9px] block h-3"></span>
                     </div>
                   </td>
@@ -59,7 +69,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                     const matchingSlot = daySlots.find(s => s.appliance === appliance);
 
                     // Collect all assignment timeline segments for this seat
-                    const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === role) || [];
+                    const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === roles.role) || [];
                     const slotRequests = matchingSlot?.requests || [];
 
                     return (

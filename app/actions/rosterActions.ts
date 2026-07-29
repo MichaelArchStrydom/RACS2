@@ -1,7 +1,8 @@
 'use server'
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
-import { setNZHours } from '@/lib/timezone'
+import { isMoreThanOneDayPast } from '@/lib/timezone'
+import { parseTimeRangeOnDay, isWithinRange, TIME_RANGE_INVALID_MESSAGE } from '@/lib/shiftTime'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { getCurrentMember } from '@/lib/auth'
 
@@ -14,7 +15,8 @@ export async function createStandInRequest(
   // AUTHZ: previously this trusted requestedById straight off the wire — any
   // logged-in user could post a request under someone else's name. Now the
   // real session decides: you may request for yourself, or for anyone if
-  // you're an admin/moderator (the "on behalf" feature).
+  // you're an admin/moderator (the "on behalf" feature). The same isMod flag
+  // also exempts admins/mods from the past-shift restriction below.
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
   const isMod = caller.isAdmin || caller.isModerator
@@ -23,17 +25,33 @@ export async function createStandInRequest(
   }
 
   const assignment = await db.shiftAssignment.findUnique({
-    where: { id: assignmentId }
+    where: { id: assignmentId },
+    include: { slot: true }
   })
 
   if (!assignment) throw new Error("Shift assignment not found")
+
+  if (!isMod && isMoreThanOneDayPast(assignment.slot.date)) {
+    throw new Error('This shift is too far in the past — ask an admin to make this change.')
+  }
+
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+  const { startTime: boundStart, endTime: boundEnd } = await mergeShifts(assignmentId)
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    !isWithinRange(start, end, boundStart, boundEnd)
+  ) {
+    throw new Error(TIME_RANGE_INVALID_MESSAGE)
+  }
 
   await db.standInRequest.create({
     data: {
       slotId: assignment.slotId,
       requestedById,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
+      startTime: start,
+      endTime: end,
       status: "PENDING",
       requestType: "COVER",
       createdById: caller.id, // audit: who actually posted it
@@ -58,20 +76,12 @@ export async function moderatorCancelStandInRequest(
   if (!request) throw new Error('Request not found')
   if (request.status !== 'PENDING') throw new Error(ALREADY_ACTIONED)
 
-  const [shours, smin] = selectedStartStr.split(':').map(Number)
-  const [ehours, emin] = selectedEndStr.split(':').map(Number)
-  if ([shours, smin, ehours, emin].some(n => Number.isNaN(n))) {
-    throw new Error('Invalid time input')
-  }
-
   // Same NZ-wall-clock parsing + overnight rollover as acceptStandInRequest:
   // both times anchor on the request's start-day, and if end <= start it
   // rolls to the next day.
-  const cancelStart = setNZHours(new Date(request.startTime), shours, smin)
-  const cancelEnd = setNZHours(new Date(request.startTime), ehours, emin)
-  if (cancelEnd.getTime() <= cancelStart.getTime()) {
-    cancelEnd.setTime(cancelEnd.getTime() + 24 * 60 * 60 * 1000)
-  }
+  const parsed = parseTimeRangeOnDay(request.startTime, selectedStartStr, selectedEndStr)
+  if (!parsed) throw new Error('Invalid time input')
+  const { start: cancelStart, end: cancelEnd } = parsed
 
   const origStart = new Date(request.startTime)
   const origEnd = new Date(request.endTime)
@@ -137,36 +147,36 @@ export async function acceptStandInRequest(
   selectedStartStr: string,
   selectedEndStr: string
 ) {
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+  const isMod = caller.isAdmin || caller.isModerator
+  if (coveringMemberId !== caller.id && !isMod) {
+    throw new Error('You can only pick up or retract cover for yourself.')
+  }
+
   const request = await db.standInRequest.findUnique({
     where: { id: requestId },
     include: { slot: true }
   })
 
   if (!request) throw new Error("Target stand-in request token not found")
-  // Fast fail before doing any work: cheap, catches the common case where
-  // someone else already actioned this request.
+
   if (request.status !== 'PENDING') throw new Error(ALREADY_ACTIONED)
 
-  const [shours, smin] = selectedStartStr.split(':').map(Number)
-  const [ehours, emin] = selectedEndStr.split(':').map(Number)
-
-
-  // Both coverStart and coverEnd are based on request.startTime's calendar day
-  // (not request.endTime, which may already be the next day for overnight
-  // shifts) so the day-rollover logic below is the only place that adds a day.
-  const coverStart = setNZHours(new Date(request.startTime), shours, smin)
-  const coverEnd = setNZHours(new Date(request.startTime), ehours, emin)
-
-  // Compare actual timestamps — if end is not after start, add a day.
-  // This correctly handles 07:00→07:00 (adds a day → 24h cover) and
-  // 20:00→07:00 (adds a day → 11h cover), while leaving 17:30→23:00 alone.
-  if (coverEnd.getTime() <= coverStart.getTime()) {
-    coverEnd.setTime(coverEnd.getTime() + 24 * 60 * 60 * 1000)
+  if (!isMod && isMoreThanOneDayPast(request.slot.date)) {
+    throw new Error('This shift is too far in the past — ask an admin to make this change.')
   }
+
+  const parsed = parseTimeRangeOnDay(request.startTime, selectedStartStr, selectedEndStr)
+  if (!parsed) throw new Error('Invalid time input')
+  const { start: coverStart, end: coverEnd } = parsed
 
   const origReqStart = new Date(request.startTime)
   const origReqEnd = new Date(request.endTime)
 
+  if (!isWithinRange(coverStart, coverEnd, origReqStart, origReqEnd)) {
+    throw new Error(TIME_RANGE_INVALID_MESSAGE)
+  }
 
   await db.$transaction(async (tx) => {
     const claim = await tx.standInRequest.updateMany({
@@ -252,7 +262,7 @@ export async function acceptStandInRequest(
             slotId: assignment.slotId,
             applianceRole: assignment.applianceRole,
             memberId: assignment.memberId,
-            actualMemberId: coveringMemberId,
+            actualMemberId: coveringMemberId === assignment.memberId ? null : coveringMemberId,
             startTime: actualStart,
             endTime: actualEnd,
             historicalRank: assignment.historicalRank,
@@ -307,4 +317,50 @@ export async function acceptStandInRequest(
   })
 
   revalidatePath('/')
+}
+
+function mergerHelper(
+  targetIndex: number,
+  sorted: { id: string; memberId: string; actualMemberId: string | null; startTime: Date; endTime: Date }[],
+  isForward: boolean
+): Date {
+  let i = targetIndex
+  while (isForward ? i < sorted.length - 1 : i > 0) {
+    const current = sorted[i]
+    const candidate = isForward ? sorted[i + 1] : sorted[i - 1]
+
+    const currentOwner = current.actualMemberId ?? current.memberId
+    const isSameOwner = (candidate.actualMemberId ?? candidate.memberId) === currentOwner
+    const isContiguous = isForward
+      ? candidate.startTime.getTime() === current.endTime.getTime()
+      : candidate.endTime.getTime() === current.startTime.getTime()
+    const isCurrentCovered = !!current.actualMemberId && current.actualMemberId !== current.memberId
+    const isCandidateCovered = !!candidate.actualMemberId && candidate.actualMemberId !== candidate.memberId
+    const isSameStatus = isCurrentCovered === isCandidateCovered
+
+    if (isSameOwner && isContiguous && isSameStatus) {
+      isForward ? i++ : i--
+    } else {
+      break
+    }
+  }
+  return isForward ? sorted[i].endTime : sorted[i].startTime
+}
+
+export async function mergeShifts(assignmentId: string): Promise<{ startTime: Date; endTime: Date }> {
+  const target = await db.shiftAssignment.findUnique({ where: { id: assignmentId } })
+  if (!target) throw new Error('Shift assignment not found')
+
+  const pool = await db.shiftAssignment.findMany({
+    where: { slotId: target.slotId, applianceRole: target.applianceRole },
+  })
+
+  const sorted = pool.sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+
+  const targetIndex = sorted.findIndex(a => a.id === target.id)
+  if (targetIndex === -1) throw new Error('Shift assignment not found in its own seat/day pool')
+
+  const startTime = mergerHelper(targetIndex, sorted, false)
+  const endTime = mergerHelper(targetIndex, sorted, true)
+  return { startTime, endTime }
 }

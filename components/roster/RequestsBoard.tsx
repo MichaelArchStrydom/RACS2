@@ -3,8 +3,9 @@
 import { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
-import { createStandInRequest } from '@/app/actions/rosterActions'
-import { normalizeTimeInput } from '@/lib/timezone'
+import { createStandInRequest, mergeShifts } from '@/app/actions/rosterActions'
+import { normalizeTimeInput, isMoreThanOneDayPast, formatNZTime } from '@/lib/timezone'
+import { parseTimeRangeOnDay, isWithinRange } from '@/lib/shiftTime'
 import Spinner from '@/components/Spinner'
 import { useRosterInteraction } from '@/components/roster/RosterInteractionContext'
 import { Check, X, Shield, ChevronUp, ChevronDown } from 'lucide-react'
@@ -13,6 +14,7 @@ interface UserShift {
   assignmentId: string
   label: string       // display string for the dropdown option
   startIso: string    // ISO string — used to reconstruct the Date on submit
+  endIso: string      // ISO string — the shift's real end, used to bound the cover window
   defaultStart: string // "HH:MM" pre-filled in the From input
   defaultEnd: string   // "HH:MM" pre-filled in the Until input
 }
@@ -48,15 +50,13 @@ export default function RequestsBoard({
   const [selectedShiftId, setSelectedShiftId] = useState('')
   const [coverStart, setCoverStart] = useState('')
   const [coverEnd, setCoverEnd] = useState('')
+  const [resolvedShiftRange, setResolvedShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
   const { pendingShiftAssignmentId, pendingScrollRequestId, clearPendingShift, clearPendingScroll } = useRosterInteraction()
   const createFormRef = useRef<HTMLFormElement>(null)
   const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
-  // Moderator state: on-behalf mode adds a member-picker step above the
-  // normal create form; cancelMode turns the whole board into an explicit
-  // "deleting requests" state so cancels can't happen by accident.
   const [onBehalfMode, setOnBehalfMode] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
   const [targetMemberId, setTargetMemberId] = useState('')
@@ -76,6 +76,24 @@ export default function RequestsBoard({
   // Whose name the request will be posted under.
   const requestForId = onBehalfMode ? targetMemberId : activeUserId
 
+  const shiftStart = resolvedShiftRange?.start ?? null
+  const shiftEnd = resolvedShiftRange?.end ?? null
+  const parsedCoverRange = shiftStart && coverStart && coverEnd
+    ? parseTimeRangeOnDay(shiftStart, coverStart, coverEnd)
+    : null
+  const isCoverRangeValid = !!parsedCoverRange && !!shiftEnd &&
+    isWithinRange(parsedCoverRange.start, parsedCoverRange.end, shiftStart!, shiftEnd)
+
+  const isShiftTooOldForMember = !isModerator && !!shiftStart && isMoreThanOneDayPast(shiftStart)
+
+  const createBlockReason = !selectedShiftId
+    ? null
+    : !isCoverRangeValid
+      ? 'Time range not possible'
+      : isShiftTooOldForMember
+        ? 'Too old — admin only'
+        : null
+
   const matchingMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase()
     if (!q) return memberOptions
@@ -93,7 +111,24 @@ export default function RequestsBoard({
     setSelectedShiftId('')
     setCoverStart('')
     setCoverEnd('')
+    setResolvedShiftRange(null)
     setCreateError(null)
+  }
+
+  const resolveAndPrefill = (shift: UserShift) => {
+    setCoverStart(shift.defaultStart)
+    setCoverEnd(shift.defaultEnd)
+    setResolvedShiftRange({ start: new Date(shift.startIso), end: new Date(shift.endIso) })
+
+    mergeShifts(shift.assignmentId)
+      .then(({ startTime, endTime }) => {
+        setResolvedShiftRange({ start: startTime, end: endTime })
+        setCoverStart(formatNZTime(startTime))
+        setCoverEnd(formatNZTime(endTime))
+      })
+      .catch(() => {
+
+      })
   }
 
   const handleShiftSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -101,11 +136,11 @@ export default function RequestsBoard({
     setSelectedShiftId(id)
     const shift = shiftPool.find(s => s.assignmentId === id)
     if (shift) {
-      setCoverStart(shift.defaultStart)
-      setCoverEnd(shift.defaultEnd)
+      resolveAndPrefill(shift)
     } else {
       setCoverStart('')
       setCoverEnd('')
+      setResolvedShiftRange(null)
     }
   }
 
@@ -126,11 +161,11 @@ export default function RequestsBoard({
       setShowCreateForm(true)
       setOnBehalfMode(false)
       setSelectedShiftId(shift.assignmentId)
-      setCoverStart(shift.defaultStart)
-      setCoverEnd(shift.defaultEnd)
+      resolveAndPrefill(shift)
       setScrollToFormTrigger(n => n + 1)
     }
     clearPendingShift()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingShiftAssignmentId, userShifts, clearPendingShift])
 
   // Only fires when the trigger above actually bumps (i.e. only for the
@@ -153,19 +188,11 @@ export default function RequestsBoard({
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedShift || !requestForId) return
+
+    if (!selectedShift || !requestForId || !parsedCoverRange || createBlockReason) return
     setCreateError(null)
 
-    const startDate = new Date(selectedShift.startIso)
-    const [sh, sm] = coverStart.split(':').map(Number)
-    startDate.setHours(sh, sm, 0, 0)
-
-    const endDate = new Date(selectedShift.startIso)
-    const [eh, em] = coverEnd.split(':').map(Number)
-    endDate.setHours(eh, em, 0, 0)
-    if (endDate.getTime() <= startDate.getTime()) {
-      endDate.setDate(endDate.getDate() + 1)
-    }
+    const { start: startDate, end: endDate } = parsedCoverRange
 
     startCreateTransition(async () => {
       try {
@@ -387,13 +414,21 @@ export default function RequestsBoard({
               </div>
               <button
                 type="submit"
-                disabled={isCreating}
+                disabled={isCreating || !!createBlockReason}
+                title={createBlockReason ?? undefined}
                 className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
               >
                 {isCreating && <Spinner className="w-3.5 h-3.5" />}
-                {isCreating ? 'Posting…' : 'Post Request'}
+                {isCreating ? 'Posting…' : createBlockReason ?? 'Post Request'}
               </button>
             </div>
+          )}
+          {createBlockReason && !isCreating && (
+            <p className="text-[11px] font-semibold text-rose-600">
+              {createBlockReason === 'Time range not possible'
+                ? "That range falls outside the shift's actual hours — adjust the times above."
+                : "This shift is more than a day in the past — only an admin can post this now."}
+            </p>
           )}
         </form>
       )}
@@ -412,6 +447,7 @@ export default function RequestsBoard({
                 request={request}
                 activeUserId={activeUserId}
                 cancelMode={cancelMode}
+                isModerator={isModerator}
               />
             </div>
           ))}

@@ -22,39 +22,6 @@ export default async function StatsPage() {
         {' '}<span className="font-semibold text-rose-600">Red</span> means the opposite. Cover a shift for someone to bring your balance up.
       </p>
 
-      {/* Skyline chart: whole-brigade shape at a glance, same order/colours as the ranked list below (which has the names and exact numbers). */}
-      <div className="bg-white rounded-xl border shadow-sm p-4">
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">Brigade Overview</p>
-        <div className="h-32 flex flex-col">
-          <div className="flex-1 flex items-end gap-px">
-            {members.map(m => (
-              <div key={m.id} className="flex-1 h-full flex items-end justify-center min-w-0">
-                {m.hourBalance >= 0 && (
-                  <div
-                    className={`w-full rounded-t ${m.id === activeMember.id ? 'bg-blue-500' : 'bg-green-500'}`}
-                    style={{ height: `${(Math.abs(m.hourBalance) / maxAbsBalance) * 100}%` }}
-                    title={`${m.lastName}, ${m.firstName.charAt(0)}. — ${m.hourBalance >= 0 ? '+' : ''}${m.hourBalance}h`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="h-px bg-slate-300 w-full shrink-0" />
-          <div className="flex-1 flex items-start gap-px">
-            {members.map(m => (
-              <div key={m.id} className="flex-1 h-full flex items-start justify-center min-w-0">
-                {m.hourBalance < 0 && (
-                  <div
-                    className={`w-full rounded-b ${m.id === activeMember.id ? 'bg-blue-500' : 'bg-rose-400'}`}
-                    style={{ height: `${(Math.abs(m.hourBalance) / maxAbsBalance) * 100}%` }}
-                    title={`${m.lastName}, ${m.firstName.charAt(0)}. — ${m.hourBalance}h`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
       <div className="bg-white rounded-xl border shadow-sm divide-y divide-slate-100">
         {members.map((m, i) => {

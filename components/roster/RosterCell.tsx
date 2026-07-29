@@ -21,7 +21,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   const { requestCoverFor, scrollToRequest } = useRosterInteraction()
 
   function getStatus(assignment: any) {
-    const isCovered = !!assignment.actualMember
+    const isCovered = !!assignment.actualMemberId && assignment.actualMemberId !== assignment.memberId
     const start = new Date(assignment.startTime).getTime()
     const end = new Date(assignment.endTime).getTime()
     const currentOwner = assignment.actualMemberId ?? assignment.memberId
@@ -109,7 +109,7 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   return (
     <div className="w-full h-full flex flex-col gap-1">
       {displaySlices.map((assignment) => {
-        const isCovered = !!assignment.actualMember;
+        const isCovered = !!assignment.actualMemberId && assignment.actualMemberId !== assignment.memberId;
 
         const assignmentStart = new Date(assignment.startTime).getTime()
         const assignmentEnd = new Date(assignment.endTime).getTime()

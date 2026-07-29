@@ -83,6 +83,11 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
 }
 
+export function isMoreThanOneDayPast(date: Date): boolean {
+  const dateStr = new Date(date).toLocaleDateString('en-CA', { timeZone: NZ_TZ })
+  return dateStr < addDaysToDateString(todayNZDateString(), -1)
+}
+
 /**
  * Convert a "YYYY-MM-DD" NZ calendar date into the exact UTC instant of
  * midnight (00:00) on that date in NZ time — correct across the DST

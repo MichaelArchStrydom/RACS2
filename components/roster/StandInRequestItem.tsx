@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptStandInRequest, moderatorCancelStandInRequest } from '@/app/actions/rosterActions'
 import { ALREADY_ACTIONED } from '@/lib/errors'
-import { formatNZTime, normalizeTimeInput } from '@/lib/timezone'
+import { formatNZTime, normalizeTimeInput, isMoreThanOneDayPast } from '@/lib/timezone'
+import { parseTimeRangeOnDay, isWithinRange } from '@/lib/shiftTime'
 import Spinner from '@/components/Spinner'
 import { Trash2, Check } from 'lucide-react'
 
@@ -15,9 +16,10 @@ interface StandInRequestItemProps {
   // becomes "Delete Request" and the time inputs define WHICH PORTION of the
   // request to cancel (full window pre-filled = full cancel).
   cancelMode?: boolean
+  isModerator?: boolean
 }
 
-export default function StandInRequestItem({ request, activeUserId, cancelMode = false }: StandInRequestItemProps) {
+export default function StandInRequestItem({ request, activeUserId, cancelMode = false, isModerator = false }: StandInRequestItemProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -27,6 +29,24 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
 
   const [coverStart, setCoverStart] = useState(defaultStart)
   const [coverEnd, setCoverEnd] = useState(defaultEnd)
+
+  const requestStart = new Date(request.startTime)
+  const requestEnd = new Date(request.endTime)
+  const parsedCoverRange = coverStart && coverEnd
+    ? parseTimeRangeOnDay(requestStart, coverStart, coverEnd)
+    : null
+  const isCoverRangeValid = !!parsedCoverRange &&
+    isWithinRange(parsedCoverRange.start, parsedCoverRange.end, requestStart, requestEnd)
+
+  const isShiftTooOldForMember = !isModerator && isMoreThanOneDayPast(request.slot.date)
+
+  const blockReason = cancelMode
+    ? null
+    : !isCoverRangeValid
+      ? 'Time range not possible'
+      : isShiftTooOldForMember
+        ? 'Too old — admin only'
+        : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,6 +78,8 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
       })
       return
     }
+
+    if (blockReason) return
 
     startTransition(async () => {
       try {
@@ -140,7 +162,8 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
 
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !!blockReason}
+              title={blockReason ?? undefined}
               className={`flex items-center justify-center gap-1.5 px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-2.5 md:py-1.5
                 ${cancelMode
                   ? 'bg-rose-600 hover:bg-rose-700 text-white'
@@ -150,9 +173,18 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
             >
               {isPending && <Spinner className="w-3.5 h-3.5" />}
               {!isPending && cancelMode && <Trash2 className="w-3.5 h-3.5" />}
-              {isPending ? 'Processing...' : cancelMode ? 'Delete Request' : isOwnRequest ? 'Retract Request' : 'Take Shift'}
+              {isPending
+                ? 'Processing...'
+                : blockReason ?? (cancelMode ? 'Delete Request' : isOwnRequest ? 'Retract Request' : 'Take Shift')}
             </button>
           </div>
+          {blockReason && !isPending && (
+            <p className="text-[11px] font-semibold text-rose-600">
+              {blockReason === 'Time range not possible'
+                ? "That range falls outside this request's actual hours — adjust the times above."
+                : "This shift is more than a day in the past — only an admin can action it now."}
+            </p>
+          )}
         </form>
       ) : (
         <span className="inline-flex items-center gap-1 text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-200">
