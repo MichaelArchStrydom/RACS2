@@ -2,9 +2,11 @@
 
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { hashPassword } from '@/lib/auth'
 import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeText, sanitizeLongText } from '@/lib/sanitize'
 import { ALREADY_ACTIONED } from '@/lib/errors'
+import { sendPushToMembers } from '@/lib/push'
 
 // ─── AUTH GUARD ───────────────────────────────────────────────────────────────
 // Every action calls this first. Pass the activeUserId from the form.
@@ -514,6 +516,19 @@ export async function createAnnouncement(adminId: string, data: {
   await db.announcement.create({
     data: { title, body, createdById: adminId }
   })
+
+  after(async () => {
+    const recipients = await db.member.findMany({
+      where: { isActive: true, notifyAnnouncement: true },
+      select: { id: true },
+    })
+    await sendPushToMembers(recipients.map((m) => m.id), {
+      title: `Announcement: ${title}`,
+      body,
+      url: '/',
+    })
+  })
+
   revalidatePath('/admin/announcements')
   revalidatePath('/')
 }

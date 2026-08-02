@@ -6,7 +6,7 @@ import { logoutAction } from '@/app/actions/authActions'
 import { useBodyScrollLock } from '@/components/useBodyScrollLock'
 import {
   X, LayoutDashboard, Users, GraduationCap, UsersRound, Truck,
-  Calendar, Megaphone, Palmtree, Settings, LayoutGrid, CircleUserRound, Phone, BarChart3,
+  Calendar, Megaphone, Palmtree, Settings, LayoutGrid, CircleUserRound, Phone, BarChart3, Bell,
 } from 'lucide-react'
 
 interface NavMenuPanelProps {
@@ -24,6 +24,7 @@ export const AdminNavLinks = [
   { href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
   { href: '/admin/leave', label: 'Leave', icon: Palmtree },
   { href: '/admin/roster', label: 'Roster Tools', icon: Settings },
+  { href: '/admin/notifications', label: 'Notifications', icon: Bell },
 ]
 export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPanelProps) {
   const { isOpen, close } = useNavMenu()

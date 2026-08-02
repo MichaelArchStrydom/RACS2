@@ -56,7 +56,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   )
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6">
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
           ✓ {decodeURIComponent(success)}

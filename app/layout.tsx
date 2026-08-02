@@ -15,6 +15,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "RACS2",
   description: "Built By & For The Silverdale Fire Brigade",
+  manifest: "/manifest.json",
+  // apple-touch-icon
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "RACS2",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport = {
+  themeColor: "#f43f5e",
 };
 
 export default function RootLayout({

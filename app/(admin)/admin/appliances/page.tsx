@@ -23,7 +23,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
   const appliances = await db.appliance.findMany({ orderBy: { displayOrder: 'asc' } })
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6">
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
           ✓ {decodeURIComponent(success)}

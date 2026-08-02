@@ -31,12 +31,12 @@ model Member {
   isOfficer Boolean @default(false)
 
   // NEW: admin and status fields
-  isAdmin  Boolean @default(false)
+  isAdmin     Boolean @default(false)
   // Moderator: can manage cover requests on other members' behalf (create /
   // cancel from the roster board) but has NO access to the admin portal.
   // Admins implicitly have all moderator abilities.
   isModerator Boolean @default(false)
-  isActive Boolean @default(true)
+  isActive    Boolean @default(true)
 
   // Zone type controls automatic cover-request generation by the roster engine:
   //   GREEN      = normal member, rostered on both appliances
@@ -55,7 +55,15 @@ model Member {
   // This is the running total. Full history lives in HourLedgerEntry.
   hourBalance Float @default(0)
 
-  //Relations 
+  // Push notification opt-in preferences
+  // push enabled AT ALL is just "do they have any PushSubscription rows" —
+  // no separate master-switch field needed.
+  notifyNewCoverRequest    Boolean @default(false) // someone else posts a new cover request
+  notifyAnnouncement       Boolean @default(false) // a new announcement is posted
+  notifyStaleCoverReminder Boolean @default(false) // broadcast: a request has been open a few days and its shift is coming up soon
+  notifyMyRequestUpdates   Boolean @default(false) // your own posted request: picked up, or still uncovered as the shift approaches
+
+  //Relations
   assignments        ShiftAssignment[] @relation("AssignedMember")
   coveredAssignments ShiftAssignment[] @relation("CoveringMember")
   requests           StandInRequest[]  @relation("RequestedBy")
@@ -69,6 +77,7 @@ model Member {
   sessions       Session[]
 
   announcementReceipts AnnouncementReceipt[]
+  pushSubscriptions    PushSubscription[]
 }
 
 //SESSION
@@ -234,6 +243,16 @@ model StandInRequest {
   // cancelledById = the moderator/admin who cancelled it, if any.
   createdById   String?
   cancelledById String?
+
+  createdAt DateTime @default(now())
+
+  // Nullable "sent at" timestamps, same pattern as AnnouncementReceipt.readAt
+  // — null means "hasn't happened yet". Set once the notification sweep
+  // (lib/notificationSweep.ts) actually sends that reminder, so re-running
+  // the sweep never sends the same nudge twice.
+  staleReminderSentAt DateTime? // broadcast: "still open, shift coming soon"
+  reminder24hSentAt   DateTime? // requester nudge: within 24h of shift + open >5h
+  reminder1hSentAt    DateTime? // requester nudge: within 1h of shift, still uncovered
 
   responses StandInResponse[]
 
@@ -420,6 +439,26 @@ model AnnouncementReceipt {
   archivedAt DateTime?
 
   @@unique([announcementId, memberId])
+  @@index([memberId])
+}
+
+// PUSH NOTIFICATIONS
+// One row per subscribed device (a member can have several — phone, laptop,
+// tablet — each notified independently). The endpoint/keys are exactly what
+// the browser's PushManager hands back; we never generate or interpret them
+// ourselves, just store and replay them via the web-push library.
+model PushSubscription {
+  id       String @id @default(uuid())
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique // the push relay URL the browser gave us
+  p256dh   String // encryption key the browser gave us
+  auth     String // encryption auth secret the browser gave us
+
+  userAgent String? // for showing "iPhone", "Chrome on Windows" etc. in settings
+  createdAt DateTime @default(now())
+
   @@index([memberId])
 }
 

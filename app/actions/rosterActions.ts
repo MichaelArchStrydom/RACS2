@@ -1,10 +1,12 @@
 'use server'
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
-import { isMoreThanOneDayPast } from '@/lib/timezone'
+import { after } from 'next/server'
+import { isMoreThanOneDayPast, formatNZTime } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange, TIME_RANGE_INVALID_MESSAGE } from '@/lib/shiftTime'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { getCurrentMember } from '@/lib/auth'
+import { sendPushToMember, sendPushToMembers } from '@/lib/push'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -56,6 +58,21 @@ export async function createStandInRequest(
       requestType: "COVER",
       createdById: caller.id, // audit: who actually posted it
     }
+  })
+
+  after(async () => {
+    const dateStr = new Date(assignment.slot.date).toLocaleDateString('en-NZ', {
+      timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short',
+    })
+    const recipients = await db.member.findMany({
+      where: { isActive: true, notifyNewCoverRequest: true, id: { not: requestedById } },
+      select: { id: true },
+    })
+    await sendPushToMembers(recipients.map((m) => m.id), {
+      title: 'New cover request',
+      body: `${dateStr} · ${assignment.slot.appliance} · ${formatNZTime(start)}–${formatNZTime(end)}`,
+      url: '/',
+    })
   })
 
   revalidatePath('/')
@@ -315,6 +332,25 @@ export async function acceptStandInRequest(
       })
     }
   })
+
+  // Only notify on a genuine pickup by someone else — a self-reclaim
+  // (retracting your own not-yet-taken request) is the requester acting on
+  // their own request, not news to tell them.
+  if (coveringMemberId !== request.requestedById) {
+    after(async () => {
+      const coveringMember = await db.member.findUnique({ where: { id: coveringMemberId } })
+      const requester = await db.member.findUnique({ where: { id: request.requestedById } })
+      if (!requester?.notifyMyRequestUpdates) return
+      const dateStr = new Date(request.slot.date).toLocaleDateString('en-NZ', {
+        timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short',
+      })
+      await sendPushToMember(request.requestedById, {
+        title: 'Your cover request was picked up',
+        body: `${coveringMember?.firstName ?? 'Someone nice'} ${coveringMember?.lastName ?? ''} covered your ${dateStr} shift.`,
+        url: '/',
+      })
+    })
+  }
 
   revalidatePath('/')
 }

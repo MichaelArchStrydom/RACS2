@@ -62,7 +62,7 @@ export default async function RosterToolsPage({ searchParams }: PageProps) {
   const defaultEnd = addDaysToDateString(todayStr, 13)
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6">
       <p className="text-sm text-slate-500">Generate, clear, and inspect roster slots.</p>
 
       {/* Feedback banners */}

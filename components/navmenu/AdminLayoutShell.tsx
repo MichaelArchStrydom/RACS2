@@ -9,18 +9,6 @@ interface AdminLayoutShellProps {
   children: React.ReactNode
 }
 
-const adminWidthClasses: Record<string, string> = {
-  '/admin': 'max-w-5xl',
-  '/admin/members': 'max-w-6xl',
-  '/admin/qualifications': 'max-w-3xl',
-  '/admin/crews': 'max-w-5xl',
-  '/admin/appliances': 'max-w-3xl',
-  '/admin/holidays': 'max-w-2xl',
-  '/admin/announcements': 'max-w-3xl',
-  '/admin/leave': 'max-w-4xl',
-  '/admin/roster': 'max-w-3xl',
-}
-
 export default function AdminLayoutShell({ admin, children }: AdminLayoutShellProps) {
   const pathname = usePathname()
   const current = AdminNavLinks
@@ -28,9 +16,7 @@ export default function AdminLayoutShell({ admin, children }: AdminLayoutShellPr
     .sort((a, b) => b.href.length - a.href.length)[0]
   const heading = current?.label ?? 'Admin'
 
-  const widthClass = pathname.startsWith('/admin/members/')
-    ? 'max-w-4xl'
-    : (current ? adminWidthClasses[current.href] : undefined) ?? 'max-w-5xl'
+  const widthClass = pathname === '/admin/members' ? 'max-w-6xl' : 'max-w-4xl'
 
   return (
     <PageShell

@@ -25,7 +25,7 @@ export default async function QualificationsPage({ searchParams }: PageProps) {
   const qualifications = await db.qualification.findMany({ orderBy: { name: 'asc' } })
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6">
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-800 text-sm font-medium px-4 py-3 rounded-lg">
           ✓ {decodeURIComponent(success)}
