@@ -1,15 +1,14 @@
-import { setNZHours } from './timezone'
+import { setNZHours, formatNZTime } from './timezone'
 
 export const TIME_RANGE_INVALID_MESSAGE = 'Time range not possible'
 
-/**
- * Parses "HH:MM" start/end strings into real Date instants, anchored to the
- * NZ calendar day of `anchorDate` and rolling over to the next day if the
- * parsed end is not after the parsed start — the same overnight-shift
- * convention used throughout the roster (17:30 -> 07:00 spans midnight).
- * Returns null for unparseable input rather than an Invalid Date, so callers
- * can't accidentally compare against NaN.
- */
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function nzMinutesOfDay(date: Date): number {
+  const [h, m] = formatNZTime(date).split(':').map(Number)
+  return h * 60 + m
+}
+
 export function parseTimeRangeOnDay(
   anchorDate: Date,
   startStr: string,
@@ -19,11 +18,17 @@ export function parseTimeRangeOnDay(
   const [eh, em] = endStr.split(':').map(Number)
   if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null
 
-  const start = setNZHours(new Date(anchorDate), sh, sm)
-  const end = setNZHours(new Date(anchorDate), eh, em)
+  const anchorMinutes = nzMinutesOfDay(anchorDate)
+  const startOffsetDays = sh * 60 + sm < anchorMinutes ? 1 : 0
+  const endOffsetDays = eh * 60 + em < anchorMinutes ? 1 : 0
+
+  const start = setNZHours(new Date(anchorDate.getTime() + startOffsetDays * DAY_MS), sh, sm)
+  let end = setNZHours(new Date(anchorDate.getTime() + endOffsetDays * DAY_MS), eh, em)
+
   if (end.getTime() <= start.getTime()) {
-    end.setTime(end.getTime() + 24 * 60 * 60 * 1000)
+    end = new Date(end.getTime() + DAY_MS)
   }
+
   return { start, end }
 }
 
