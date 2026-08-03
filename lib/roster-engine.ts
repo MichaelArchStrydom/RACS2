@@ -31,6 +31,11 @@ export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { ass
   return { assignedCrewIndex, backupCrewIndex }
 }
 
+export function epochDayIndex(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24))
+}
+
 export async function getMonthlyRosteredHours(memberId: string, memberCrewId: string | null, monthStr: string): Promise<number> {
   if (!memberCrewId) return 0
 

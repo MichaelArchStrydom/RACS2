@@ -7,6 +7,7 @@ import { hashPassword } from '@/lib/auth'
 import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeText, sanitizeLongText } from '@/lib/sanitize'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { sendPushToMembers } from '@/lib/push'
+import { epochDayIndex } from '@/lib/roster-engine'
 
 // ─── AUTH GUARD ───────────────────────────────────────────────────────────────
 // Every action calls this first. Pass the activeUserId from the form.
@@ -205,7 +206,6 @@ export async function setQualificationActive(adminId: string, qualificationId: s
 
 export async function updateCrew(adminId: string, crewId: string, data: {
   watchName?: string
-  crewOrder?: number
   isActive?: boolean
 }) {
   await requireAdmin(adminId)
@@ -215,11 +215,42 @@ export async function updateCrew(adminId: string, crewId: string, data: {
   revalidatePath('/admin/crews')
 }
 
-export async function addCrew(adminId: string, watchName: string, crewOrder: number) {
+export async function addCrew(adminId: string, watchName: string) {
   await requireAdmin(adminId)
   const cleanName = sanitizeText(watchName)
   if (!cleanName) throw new Error('Watch name is required.')
-  await db.crew.create({ data: { watchName: cleanName, crewOrder, isActive: true } })
+  const crewCount = await db.crew.count()
+  await db.crew.create({ data: { watchName: cleanName, crewOrder: crewCount, isActive: true } })
+  revalidatePath('/admin/crews')
+}
+
+export async function reorderCrews(
+  adminId: string,
+  referenceDateStr: string,
+  orderedCrewIds: string[]
+) {
+  await requireAdmin(adminId)
+
+  const allCrews = await db.crew.findMany({ select: { id: true } })
+  const crewCount = allCrews.length
+  const validIds = new Set(allCrews.map((c) => c.id))
+
+  if (orderedCrewIds.length !== crewCount || new Set(orderedCrewIds).size !== crewCount) {
+    throw new Error('Every crew must appear exactly once in the new order.')
+  }
+  if (!orderedCrewIds.every((id) => validIds.has(id))) {
+    throw new Error('Unknown crew in the new order.')
+  }
+
+  const dayIndex = epochDayIndex(referenceDateStr)
+  const base = ((dayIndex % crewCount) + crewCount) % crewCount
+
+  await db.$transaction(
+    orderedCrewIds.map((crewId, k) =>
+      db.crew.update({ where: { id: crewId }, data: { crewOrder: (base + k) % crewCount } })
+    )
+  )
+
   revalidatePath('/admin/crews')
 }
 
