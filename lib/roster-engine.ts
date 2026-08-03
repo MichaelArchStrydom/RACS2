@@ -93,9 +93,17 @@ export async function getMonthlyRosteredHours(memberId: string, memberCrewId: st
   return totalHours
 }
 
-// Fills OIC/Driver/FF1-3 seats from a crew's members, preferring qualified
-// members for OIC (SO_QUALIFIED) and Driver (PUMP_OP) before falling back to
-// whoever's left. Returns only seats that could actually be filled.
+// Fills OIC/Driver/FF1-3 seats from a crew's members. OIC and Driver are
+// qualification-gated with no fallback — better an empty seat than someone
+// unqualified put in charge or behind the wheel. Recruits (rank RCFF) are
+// reserved for FF3 only, never OIC/Driver/FF1/FF2, so if FF3 is already taken
+// by another recruit, any extra recruit simply doesn't get seated that day
+// rather than sliding into a seat they shouldn't hold.
+//
+// This gating is deliberately scoped to roster GENERATION only (this
+// function and its two callers below). Cover-request acceptance
+// intentionally stays unrestricted anyone can pick up
+// any shift, with admins/mods as the manual backstop if quals are wrong.
 export function buildSeatLineup(crew: any): { role: string; member: any }[] {
   let availableMembers = [...crew.members]
   const extract = (condition: (m: any) => boolean) => {
@@ -104,12 +112,22 @@ export function buildSeatLineup(crew: any): { role: string; member: any }[] {
     return null
   }
 
+  const isRecruit = (m: any) => m.rank === 'RCFF'
+  const isOfficerQualified = (m: any) => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')
+  const isDriverQualified = (m: any) => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')
+
+  const oic = extract(isOfficerQualified)
+  const driver = extract(isDriverQualified)
+  const ff3 = extract(isRecruit) || extract(() => true)
+  const ff1 = extract(m => !isRecruit(m))
+  const ff2 = extract(m => !isRecruit(m))
+
   return [
-    { role: 'OIC', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')) || extract(() => true) },
-    { role: 'Driver', member: extract(m => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')) || extract(() => true) },
-    { role: 'FF1', member: extract(() => true) },
-    { role: 'FF2', member: extract(() => true) },
-    { role: 'FF3', member: extract(() => true) }
+    { role: 'OIC', member: oic },
+    { role: 'Driver', member: driver },
+    { role: 'FF1', member: ff1 },
+    { role: 'FF2', member: ff2 },
+    { role: 'FF3', member: ff3 }
   ].filter(item => item.member !== null)
 }
 

@@ -24,9 +24,6 @@ export default async function CrewsPage({ searchParams }: PageProps) {
 
   const [crews, unassignedMembers] = await Promise.all([
     db.crew.findMany({
-      // Same ordering (crewOrder asc, id asc as a stable tiebreak) the roster
-      // engine itself sorts by — the Rotation Order tool below needs to see
-      // crews in the exact sequence generateRosterForDateRange will use.
       orderBy: [{ crewOrder: 'asc' }, { id: 'asc' }],
       include: {
         members: {
@@ -46,9 +43,6 @@ export default async function CrewsPage({ searchParams }: PageProps) {
   const todayStr = todayNZDateString()
   const crewCount = crews.length
   const todayBase = crewCount > 0 ? ((epochDayIndex(todayStr) % crewCount) + crewCount) % crewCount : 0
-  // Position 1 = on duty today, position 2 = on duty tomorrow, etc. — the
-  // intuitive ordering admins think in, independent of the raw stored
-  // crewOrder integer that anchors the eternal rotation cycle.
   const positionFromToday = new Map(
     crews.map((crew: any, j: number) => [crew.id, ((j - todayBase + crewCount) % crewCount) + 1])
   )
