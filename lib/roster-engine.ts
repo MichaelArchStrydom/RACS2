@@ -118,9 +118,13 @@ export function buildSeatLineup(crew: any): { role: string; member: any }[] {
 
   const oic = extract(isOfficerQualified)
   const driver = extract(isDriverQualified)
-  const ff3 = extract(isRecruit) || extract(() => true)
+  // Pull a recruit out of the pool now so FF1/FF2 can't claim them ahead of
+  // FF3 but hold them aside rather than seating them immediately, so a
+  // crew with no recruit still fills FF1 then FF2 in order before FF3.
+  const reservedRecruit = extract(isRecruit)
   const ff1 = extract(m => !isRecruit(m))
   const ff2 = extract(m => !isRecruit(m))
+  const ff3 = reservedRecruit || extract(() => true)
 
   return [
     { role: 'OIC', member: oic },
