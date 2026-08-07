@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 import { ArrowLeft, Check } from 'lucide-react'
+import { roundHoursForDisplay } from '@/lib/formatHours'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -277,7 +278,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           <div>
             <h2 className="text-sm font-semibold text-slate-700">Hour Balance</h2>
             <p className={`text-2xl font-bold mt-0.5 ${member.hourBalance >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-              {member.hourBalance >= 0 ? '+' : ''}{member.hourBalance}h
+              {member.hourBalance >= 0 ? '+' : ''}{roundHoursForDisplay(member.hourBalance)}h
             </p>
           </div>
           {/* Manual adjustment */}
@@ -332,7 +333,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                     <td className="px-3 py-2 text-slate-600">{e.reason.replace(/_/g, ' ')}</td>
                     <td className="px-3 py-2 text-slate-400 italic">{e.notes ?? '—'}</td>
                     <td className={`px-3 py-2 text-right font-mono font-bold ${e.hoursChange >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-                      {e.hoursChange >= 0 ? '+' : ''}{e.hoursChange}h
+                      {e.hoursChange >= 0 ? '+' : ''}{roundHoursForDisplay(e.hoursChange)}h
                     </td>
                   </tr>
                 ))}

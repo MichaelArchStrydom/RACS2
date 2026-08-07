@@ -5,6 +5,7 @@ import ChangePasswordForm from '@/components/ChangePasswordForm'
 import PushNotificationSettings from '@/components/notifications/PushNotificationSettings'
 import { formatNZTime, todayNZDateString } from '@/lib/timezone'
 import { getMonthlyRosteredHours } from '@/lib/roster-engine'
+import { roundHoursForDisplay } from '@/lib/formatHours'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,13 +102,13 @@ export default async function ProfilePage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-50 rounded-lg p-3 border">
             <p className={`text-2xl font-bold ${member.hourBalance >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-              {member.hourBalance >= 0 ? '+' : ''}{member.hourBalance}h
+              {member.hourBalance >= 0 ? '+' : ''}{roundHoursForDisplay(member.hourBalance)}h
             </p>
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mt-0.5">Current Balance</p>
           </div>
           <div className="bg-slate-50 rounded-lg p-3 border">
             <p className="text-2xl font-bold text-slate-700">
-              {member.crewId ? `${monthlyRosteredHours}h` : '—'}
+              {member.crewId ? `${roundHoursForDisplay(monthlyRosteredHours)}h` : '—'}
             </p>
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mt-0.5">
               Rostered Hours ({monthLabel})
@@ -129,7 +130,7 @@ export default async function ProfilePage() {
                     <span className="text-slate-400">{entry.reason}</span>
                   </span>
                   <span className={`font-mono font-bold ${entry.hoursChange >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-                    {entry.hoursChange >= 0 ? '+' : ''}{entry.hoursChange}h
+                    {entry.hoursChange >= 0 ? '+' : ''}{roundHoursForDisplay(entry.hoursChange)}h
                   </span>
                 </li>
               ))}

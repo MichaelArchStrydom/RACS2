@@ -15,18 +15,6 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
   // TODO: Make roles a dynamic object array instead of hardcoded for variations in appliances.
   // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what. 
 
-  const roles: { role: string; label: string }[] = [
-    { role: "OIC", label: "OIC" },
-    { role: "Driver", label: "Dvr" },
-    { role: "FF1", label: "FF1" },
-    { role: "FF2", label: "FF2" },
-    { role: "FF3", label: "FF3" }
-  ];
-
-  const applianceNames = appliances.map(a => a.name)
-  const applianceSeatAbbr: { name: string; seats: { abbr: string }[] }[] = appliances as { name: string; seats: { abbr: string }[] }[]
-
-
   const days = visibleDates.map((date) => {
     const dateKey = date.toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
     const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
@@ -61,7 +49,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
               {/* INDIVIDUAL ROLE ROWS */}
               {(appliance.seats as { label: string; abbr: string }[]).map(
                 (seat) => (
-                  <tr key={`${appliance}-${seat.abbr}`} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={`${appliance.name}-${seat.abbr}`} className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
                       <div className="flex flex-col">
                         <span className="text-slate-700 font-semibold">{seat.abbr}</span>

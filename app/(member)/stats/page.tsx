@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { requireMember } from '@/lib/auth'
+import { roundHoursForDisplay } from '@/lib/formatHours'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,7 +67,7 @@ export default async function StatsPage() {
               </div>
 
               <span className={`w-14 shrink-0 text-right text-xs font-mono font-bold ${isPositive ? 'text-green-600' : 'text-rose-600'}`}>
-                {isPositive ? '+' : ''}{m.hourBalance}h
+                {isPositive ? '+' : ''}{roundHoursForDisplay(m.hourBalance)}h
               </span>
             </div>
           )

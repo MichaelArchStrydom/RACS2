@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth'
 import { ArrowRight, Settings, Palmtree, Users, Calendar } from 'lucide-react'
+import { roundHoursForDisplay } from '@/lib/formatHours'
 
 
 interface PageProps {
@@ -107,7 +108,7 @@ export default async function AdminDashboard({ searchParams }: PageProps) {
                 <li key={e.id} className="flex items-center justify-between text-xs">
                   <span className="text-slate-700 font-medium">{e.member.lastName}, {e.member.firstName}</span>
                   <span className={`font-mono font-bold ${e.hoursChange >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-                    {e.hoursChange >= 0 ? '+' : ''}{e.hoursChange}h
+                    {e.hoursChange >= 0 ? '+' : ''}{roundHoursForDisplay(e.hoursChange)}h
                   </span>
                 </li>
               ))}

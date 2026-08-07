@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { addMember } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 import { Circle, ArrowRight } from 'lucide-react'
+import { roundHoursForDisplay } from '@/lib/formatHours'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; search?: string; success?: string; error?: string }>
@@ -163,7 +164,7 @@ export default async function MembersPage({ searchParams }: PageProps) {
                 </td>
                 <td className="px-4 py-3">
                   <span className={`text-xs font-mono font-bold ${m.hourBalance >= 0 ? 'text-green-600' : 'text-rose-600'}`}>
-                    {m.hourBalance >= 0 ? '+' : ''}{m.hourBalance}h
+                    {m.hourBalance >= 0 ? '+' : ''}{roundHoursForDisplay(m.hourBalance)}h
                   </span>
                 </td>
                 <td className="px-4 py-3">
