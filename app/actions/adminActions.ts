@@ -270,6 +270,7 @@ export async function updateAppliance(adminId: string, applianceId: string, data
   minimumCrew?: number
   isActive?: boolean
   notes?: string
+  seats?: { label: string; abbr: string }[]
 }) {
   await requireAdmin(adminId)
   const name = data.name !== undefined ? sanitizeText(data.name) : undefined
@@ -284,6 +285,7 @@ export async function addAppliance(adminId: string, data: {
   displayOrder: number
   seatCount: number
   minimumCrew: number
+  seats: { label: string; abbr: string }[]
 }) {
   await requireAdmin(adminId)
   const name = sanitizeText(data.name)

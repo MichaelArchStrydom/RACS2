@@ -7,7 +7,7 @@ interface RosterGridProps {
   groupedData: Record<string, any[]>;
   visibleDates: Date[];
   activeUserId: string;
-  appliances: string[];
+  appliances: { name: string; seats: { label: string; abbr: string }[] }[];
 }
 
 export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
@@ -22,6 +22,9 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
     { role: "FF2", label: "FF2" },
     { role: "FF3", label: "FF3" }
   ];
+
+  const applianceNames = appliances.map(a => a.name)
+  const applianceSeatAbbr: { name: string; seats: { abbr: string }[] }[] = appliances as { name: string; seats: { abbr: string }[] }[]
 
 
   const days = visibleDates.map((date) => {
@@ -46,48 +49,49 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {appliances.map((appliance) => (
-            <Fragment key={appliance}>
+          {appliances.map(appliance => (
+            <Fragment key={appliance.name}>
               {/* SECTION SUB-HEADER ROW */}
               <tr className="bg-slate-100/80 border-y border-slate-200">
                 <td colSpan={8} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 align-middle">
-                  {appliance}
+                  {appliance.name}
                 </td>
               </tr>
 
               {/* INDIVIDUAL ROLE ROWS */}
-              {roles.map(roles => (
-                <tr key={`${appliance}-${roles.label}`} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
-                    <div className="flex flex-col">
-                      <span className="text-slate-700 font-semibold">{roles.label}</span>
-                      <span className="text-[9px] block h-3"></span>
-                    </div>
-                  </td>
-                  {days.map(({ dateKey }) => {
-                    const daySlots = groupedData[dateKey] || [];
-                    const matchingSlot = daySlots.find(s => s.appliance === appliance);
+              {(appliance.seats as { label: string; abbr: string }[]).map(
+                (seat) => (
+                  <tr key={`${appliance}-${seat.abbr}`} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
+                      <div className="flex flex-col">
+                        <span className="text-slate-700 font-semibold">{seat.abbr}</span>
+                        <span className="text-[9px] block h-3"></span>
+                      </div>
+                    </td>
+                    {days.map(({ dateKey }) => {
+                      const daySlots = groupedData[dateKey] || [];
+                      const matchingSlot = daySlots.find(s => s.appliance === appliance.name);
 
-                    // Collect all assignment timeline segments for this seat
-                    const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === roles.role) || [];
-                    const slotRequests = matchingSlot?.requests || [];
+                      // Collect all assignment timeline segments for this seat
+                      const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === seat.label) || [];
+                      const slotRequests = matchingSlot?.requests || [];
 
-                    return (
-                      <td key={dateKey} className="p-1 border-r align-top ">
-                        {roleAssignments.length > 0 ? (
-                          <RosterCell
-                            assignments={roleAssignments}
-                            slotRequests={slotRequests}
-                            activeUserId={activeUserId}
-                          />
-                        ) : (
-                          <div className="text-center py-2 text-slate-300 italic text-[10px]">No Assignment</div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                      return (
+                        <td key={dateKey} className="p-1 border-r align-top ">
+                          {roleAssignments.length > 0 ? (
+                            <RosterCell
+                              assignments={roleAssignments}
+                              slotRequests={slotRequests}
+                              activeUserId={activeUserId}
+                            />
+                          ) : (
+                            <div className="text-center py-2 text-slate-300 italic text-[10px]">No Assignment</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
             </Fragment>
           ))}
         </tbody>

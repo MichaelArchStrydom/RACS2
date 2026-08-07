@@ -151,12 +151,16 @@ model MemberQualification {
 // PHASE 2: add applianceId FK to ShiftSlot and migrate the string data.
 // For now, name must exactly match the strings used in the roster engine.
 model Appliance {
-  id           String  @id @default(uuid())
-  name         String  @unique // must match ShiftSlot.appliance string value
+  id           String   @id @default(uuid())
+  name         String   @unique // must match ShiftSlot.appliance string value
   displayOrder Int
-  seatCount    Int     @default(5) // total seats on this appliance
-  minimumCrew  Int     @default(4) // below this = short-crewed warning
-  isActive     Boolean @default(true)
+  seatCount    Int      @default(5) // total seats on this appliance
+  minimumCrew  Int      @default(4) // below this = short-crewed warning
+  isActive     Boolean  @default(true)
+  // Each seat as one atomic { label, abbr } pair — a single array of paired
+  // values instead of two parallel arrays, so a seat's name and abbreviation
+  // can never drift out of sync the way seatLabels/seatAbbr just did for Tanker.
+  seats        Json     @default("[{\"label\":\"OIC\",\"abbr\":\"OIC\"},{\"label\":\"Driver\",\"abbr\":\"Dvr\"},{\"label\":\"FF1\",\"abbr\":\"FF1\"},{\"label\":\"FF2\",\"abbr\":\"FF2\"},{\"label\":\"FF3\",\"abbr\":\"FF3\"}]")
   notes        String?
 }
 

@@ -4,7 +4,6 @@ import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRosterInteraction } from './RosterInteractionContext'
 
-//FIX: IF COVER IS PICKED UP AND DROPPED REPEATEDLY: COLOR DOES NOT CHANGE CORRECTLY L:134
 //FIX: Desktop roster currently not filling the roster div. grouping to the left. looks horrible
 
 interface RosterCellProps {

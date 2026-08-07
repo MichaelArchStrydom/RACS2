@@ -71,7 +71,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     db.appliance.findMany({
       where: { isActive: true },
       orderBy: { displayOrder: 'asc' },
-      select: { name: true }
+      select: { name: true, seats: true }
     }),
     db.announcement.findMany({
       where: { isActive: true },
@@ -88,7 +88,21 @@ export default async function HomePage({ searchParams }: PageProps) {
     groupedData[dateKey].push(slot);
   });
 
-  const appliancesArray = activeAppliances.map(a => a.name);
+  const appliancesArray: {
+    name: string;
+    seats: {
+      label: string;
+      abbr: string
+    }[]
+  }[]
+    = activeAppliances as
+    {
+      name: string;
+      seats: {
+        label: string;
+        abbr: string
+      }[]
+    }[];
 
   // Build a dropdown list of shifts the active user can put up for cover:
   // either their own original assignment (not yet covered), or one they're
@@ -128,10 +142,10 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   const memberOptions = viewerIsMod
     ? await db.member.findMany({
-        where: { isActive: true },
-        orderBy: { lastName: 'asc' },
-        select: { id: true, firstName: true, lastName: true },
-      })
+      where: { isActive: true },
+      orderBy: { lastName: 'asc' },
+      select: { id: true, firstName: true, lastName: true },
+    })
     : undefined;
 
   // Same shape/filter as userShifts, generalized to every member using the
@@ -143,25 +157,25 @@ export default async function HomePage({ searchParams }: PageProps) {
   // special case "current owner === me".)
   const allShifts = viewerIsMod
     ? activeSlots.flatMap((slot) =>
-        slot.assignments
-          .map((a: any) => {
-            const ownerId = a.actualMemberId ?? a.memberId;
-            const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
-            const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
-            const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
-            const coveringNote = a.actualMemberId ? ` · covering for ${a.member.lastName}` : '';
+      slot.assignments
+        .map((a: any) => {
+          const ownerId = a.actualMemberId ?? a.memberId;
+          const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+          const startStr = new Date(a.startTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+          const endStr = new Date(a.endTime).toLocaleTimeString("en-NZ", { timeZone: 'Pacific/Auckland', hour: '2-digit', minute: '2-digit', hour12: false });
+          const coveringNote = a.actualMemberId ? ` · covering for ${a.member.lastName}` : '';
 
-            return {
-              ownerId,
-              assignmentId: a.id,
-              label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}${coveringNote}`,
-              startIso: a.startTime.toISOString(),
-              endIso: a.endTime.toISOString(),
-              defaultStart: startStr,
-              defaultEnd: endStr,
-            };
-          })
-      )
+          return {
+            ownerId,
+            assignmentId: a.id,
+            label: `${slotDateStr} · ${slot.appliance} · ${a.applianceRole} · ${startStr}–${endStr}${coveringNote}`,
+            startIso: a.startTime.toISOString(),
+            endIso: a.endTime.toISOString(),
+            defaultStart: startStr,
+            defaultEnd: endStr,
+          };
+        })
+    )
     : undefined;
 
   return (

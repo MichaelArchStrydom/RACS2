@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { addAppliance, updateAppliance } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
+import SeatManager from '@/components/appliances/seatManager'
 
 // Force Next.js to skip static compilation and render this live on request
 export const dynamic = 'force-dynamic'
@@ -21,6 +22,14 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
   if (!adminMember?.isAdmin) redirect('/')
 
   const appliances = await db.appliance.findMany({ orderBy: { displayOrder: 'asc' } })
+
+  const defaultSeats: { seats: string; seatsAbbr: string }[] = [
+    { seats: "OIC", seatsAbbr: "OIC" },
+    { seats: "Driver", seatsAbbr: "Dvr" },
+    { seats: "FF1", seatsAbbr: "FF1" },
+    { seats: "FF2", seatsAbbr: "FF2" },
+    { seats: "FF3", seatsAbbr: "FF3" }
+  ];
 
   return (
     <div className="space-y-6">
@@ -47,11 +56,14 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
           action={async (fd: FormData) => {
             'use server'
             try {
+              const labels = fd.getAll('seatLabels') as string[]
+              const abbrs = fd.getAll('seatAbbr') as string[]
               await addAppliance(fd.get('adminId') as string, {
                 name: fd.get('name') as string,
                 displayOrder: Number(fd.get('displayOrder')),
-                seatCount: Number(fd.get('seatCount')),
+                seatCount: labels.length,
                 minimumCrew: Number(fd.get('minimumCrew')),
+                seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
               })
               redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance added')}`)
             } catch (e: any) {
@@ -71,15 +83,15 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
             <input name="displayOrder" type="number" defaultValue={appliances.length + 1} className="border rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-slate-500">Seat Count</label>
-            <input name="seatCount" type="number" defaultValue={5} className="border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-slate-500">Minimum Crew</label>
             <input name="minimumCrew" type="number" defaultValue={3} className="border rounded-lg px-3 py-2 text-sm" />
           </div>
+          {/*Seat Manager*/}
+          <div className="flex flex-col gap-1 col-span-2">
+            <SeatManager initialSeats={defaultSeats} />
+          </div>
           <div className="flex items-end">
-            <button type="submit" className="w-full px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold rounded-lg">Add</button>
+            <button type="submit" className="w-full px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold rounded-lg">Submit Appliance</button>
           </div>
         </form>
       </details>
@@ -92,13 +104,16 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
               action={async (fd: FormData) => {
                 'use server'
                 try {
+                  const labels = fd.getAll('seatLabels') as string[]
+                  const abbrs = fd.getAll('seatAbbr') as string[]
                   await updateAppliance(fd.get('adminId') as string, fd.get('applianceId') as string, {
                     name: fd.get('name') as string,
                     displayOrder: Number(fd.get('displayOrder')),
-                    seatCount: Number(fd.get('seatCount')),
+                    seatCount: labels.length,
                     minimumCrew: Number(fd.get('minimumCrew')),
                     isActive: fd.get('isActive') === 'on',
                     notes: fd.get('notes') as string || undefined,
+                    seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
                   })
                   redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance updated')}`)
                 } catch (e: any) {
@@ -121,12 +136,16 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                   <input name="displayOrder" type="number" defaultValue={a.displayOrder} className="border rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Seats</label>
-                  <input name="seatCount" type="number" defaultValue={a.seatCount} className="border rounded-lg px-3 py-2 text-sm" />
-                </div>
-                <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-slate-500">Min Crew</label>
                   <input name="minimumCrew" type="number" defaultValue={a.minimumCrew} className="border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="py-5 flex flex-col gap-1 col-span-2 md:col-span-4">
+                  <SeatManager
+                    initialSeats={(a.seats as { label: string; abbr: string }[]).map((s) => ({
+                      seats: s.label,
+                      seatsAbbr: s.abbr,
+                    }))}
+                  />
                 </div>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold text-slate-500">Notes</label>
