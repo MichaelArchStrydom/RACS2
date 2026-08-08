@@ -70,8 +70,11 @@ export async function sendTestPushToSelf() {
 // Admin-only broadcast test pings every subscribed device regardless of
 // notification category preferences, so an admin can verify real delivery
 // and impress the boss
+//
+// `adminId` param kept for call-site compatibility but is unused/untrusted —
+// see the equivalent comment on requireAdmin() in adminActions.ts for why.
 export async function sendTestPushToAllMembers(adminId: string) {
-  const admin = await db.member.findUnique({ where: { id: adminId } })
+  const admin = await getCurrentMember()
   if (!admin?.isAdmin) throw new Error('Unauthorised: admin access required')
 
   const subscriptions = await db.pushSubscription.findMany({ select: { memberId: true } })

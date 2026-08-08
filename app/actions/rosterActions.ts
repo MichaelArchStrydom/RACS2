@@ -33,6 +33,10 @@ export async function createStandInRequest(
 
   if (!assignment) throw new Error("Shift assignment not found")
 
+  if (assignment.slot.status === 'CANCELLED') {
+    throw new Error('This shift has been cancelled.')
+  }
+
   if (!isMod && isMoreThanOneDayPast(assignment.slot.date)) {
     throw new Error('This shift is too far in the past — ask an admin to make this change.')
   }
@@ -178,6 +182,10 @@ export async function acceptStandInRequest(
 
   if (!request) throw new Error("Target stand-in request token not found")
 
+  if (request.slot.status === 'CANCELLED') {
+    throw new Error('This shift has been cancelled.')
+  }
+
   if (request.status !== 'PENDING') throw new Error(ALREADY_ACTIONED)
 
   if (!isMod && isMoreThanOneDayPast(request.slot.date)) {
@@ -314,7 +322,8 @@ export async function acceptStandInRequest(
           startTime: origReqStart,
           endTime: coverStart,
           status: "PENDING",
-          requestType: request.requestType
+          requestType: request.requestType,
+          createdById: request.createdById, // preserve "who actually posted this" through the split
         }
       })
     }
@@ -327,7 +336,8 @@ export async function acceptStandInRequest(
           startTime: coverEnd,
           endTime: origReqEnd,
           status: "PENDING",
-          requestType: request.requestType
+          requestType: request.requestType,
+          createdById: request.createdById, // preserve "who actually posted this" through the split
         }
       })
     }

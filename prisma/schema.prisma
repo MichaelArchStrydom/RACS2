@@ -23,6 +23,12 @@ model Member {
   password          String //Hashed Passwords
   passwordUpdatedAt DateTime? //Allows for admin to run session revocations
 
+  // Login throttling — incremented on each failed attempt, reset on success.
+  // lockedUntil blocks further attempts (even with the right password) until
+  // it passes, regardless of failedLoginAttempts' exact value.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   rank String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
 
   // qualification booleans kept for backward compat

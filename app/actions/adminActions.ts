@@ -3,16 +3,14 @@
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, getCurrentMember } from '@/lib/auth'
 import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeText, sanitizeLongText } from '@/lib/sanitize'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { sendPushToMembers } from '@/lib/push'
 import { epochDayIndex } from '@/lib/roster-engine'
 
-// ─── AUTH GUARD ───────────────────────────────────────────────────────────────
-// Every action calls this first. Pass the activeUserId from the form.
-async function requireAdmin(userId: string) {
-  const member = await db.member.findUnique({ where: { id: userId } })
+async function requireAdmin() {
+  const member = await getCurrentMember()
   if (!member?.isAdmin) throw new Error('Unauthorised: admin access required')
   return member
 }
@@ -32,7 +30,7 @@ export async function updateMember(adminId: string, memberId: string, data: {
   isOfficer?: boolean
   expectedHoursPerPeriod?: number | null
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
 
   // Only sanitize fields actually present in this partial update — `undefined`
   // means "leave it alone" to Prisma, so a field this call doesn't touch must
@@ -46,9 +44,16 @@ export async function updateMember(adminId: string, memberId: string, data: {
   if (lastName === '') throw new Error('Last name cannot be empty.')
   if (rank === '') throw new Error('Rank cannot be empty.')
 
+  // Deactivating a member here must clear their crew assignment too, same as
+  // the dedicated deactivateMember button — otherwise unchecking "Active
+  // member" on this form (rather than using that button) silently left
+  // crewId set, so the member kept being included in roster generation and
+  // hour projections indefinitely.
+  const crewId = data.isActive === false ? null : data.crewId
+
   await db.member.update({
     where: { id: memberId },
-    data: { ...data, firstName, lastName, rank, zoneType },
+    data: { ...data, firstName, lastName, rank, zoneType, crewId },
   })
   revalidatePath('/admin/members')
   revalidatePath(`/admin/members/${memberId}`)
@@ -64,7 +69,7 @@ export async function addMember(adminId: string, data: {
   isDriver: boolean
   isOfficer: boolean
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
 
   const firstName = sanitizeName(data.firstName)
   const lastName = sanitizeName(data.lastName)
@@ -112,7 +117,7 @@ export async function addMember(adminId: string, data: {
 }
 
 export async function resetMemberPassword(adminId: string, memberId: string, newPassword: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   if (typeof newPassword !== 'string' || newPassword.length < 8) {
     throw new Error('New password must be at least 8 characters.')
   }
@@ -135,14 +140,14 @@ export async function resetMemberPassword(adminId: string, memberId: string, new
 }
 
 export async function deactivateMember(adminId: string, memberId: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.member.update({ where: { id: memberId }, data: { isActive: false, crewId: null } })
   revalidatePath('/admin/members')
 }
 
 //QUALIFICATIONS
 export async function setMemberQualification(adminId: string, memberId: string, qualKey: string, active: boolean) {
-  await requireAdmin(adminId)
+  await requireAdmin()
 
   const qual = await db.qualification.findUnique({ where: { key: qualKey } })
   if (!qual) throw new Error(`Unknown qualification: ${qualKey}`)
@@ -174,7 +179,7 @@ export async function createQualification(adminId: string, data: {
   affectsRostering: boolean
   enabledRoles: string[]
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
 
   const key = data.key.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
   if (!key) throw new Error('A machine key is required.')
@@ -197,7 +202,7 @@ export async function createQualification(adminId: string, data: {
 }
 
 export async function setQualificationActive(adminId: string, qualificationId: string, isActive: boolean) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.qualification.update({ where: { id: qualificationId }, data: { isActive } })
   revalidatePath('/admin/qualifications')
 }
@@ -208,7 +213,7 @@ export async function updateCrew(adminId: string, crewId: string, data: {
   watchName?: string
   isActive?: boolean
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const watchName = data.watchName !== undefined ? sanitizeText(data.watchName) : undefined
   if (watchName === '') throw new Error('Watch name cannot be empty.')
   await db.crew.update({ where: { id: crewId }, data: { ...data, watchName } })
@@ -216,7 +221,7 @@ export async function updateCrew(adminId: string, crewId: string, data: {
 }
 
 export async function addCrew(adminId: string, watchName: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const cleanName = sanitizeText(watchName)
   if (!cleanName) throw new Error('Watch name is required.')
   const crewCount = await db.crew.count()
@@ -229,7 +234,7 @@ export async function reorderCrews(
   referenceDateStr: string,
   orderedCrewIds: string[]
 ) {
-  await requireAdmin(adminId)
+  await requireAdmin()
 
   const allCrews = await db.crew.findMany({ select: { id: true } })
   const crewCount = allCrews.length
@@ -255,7 +260,7 @@ export async function reorderCrews(
 }
 
 export async function moveMemberToCrew(adminId: string, memberId: string, crewId: string | null) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.member.update({ where: { id: memberId }, data: { crewId } })
   revalidatePath('/admin/crews')
   revalidatePath('/admin/members')
@@ -272,7 +277,7 @@ export async function updateAppliance(adminId: string, applianceId: string, data
   notes?: string
   seats?: { label: string; abbr: string }[]
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const name = data.name !== undefined ? sanitizeText(data.name) : undefined
   if (name === '') throw new Error('Appliance name cannot be empty.')
   const notes = data.notes !== undefined ? sanitizeLongText(data.notes) : undefined
@@ -287,7 +292,7 @@ export async function addAppliance(adminId: string, data: {
   minimumCrew: number
   seats: { label: string; abbr: string }[]
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const name = sanitizeText(data.name)
   if (!name) throw new Error('Appliance name is required.')
   await db.appliance.create({ data: { ...data, name, isActive: true } })
@@ -302,7 +307,7 @@ export async function addPublicHoliday(adminId: string, data: {
   shiftType: string
   notes?: string
 }) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   if (Number.isNaN(new Date(data.date).getTime())) throw new Error('Invalid date.')
   const name = sanitizeText(data.name)
   if (!name) throw new Error('Holiday name is required.')
@@ -312,7 +317,7 @@ export async function addPublicHoliday(adminId: string, data: {
 }
 
 export async function deletePublicHoliday(adminId: string, holidayId: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.publicHoliday.delete({ where: { id: holidayId } })
   revalidatePath('/admin/holidays')
 }
@@ -320,7 +325,7 @@ export async function deletePublicHoliday(adminId: string, holidayId: string) {
 //  LEAVE 
 
 export async function approveLeave(adminId: string, leaveId: string, adminNotes?: string) {
-  await requireAdmin(adminId)
+  const admin = await requireAdmin()
   // Conditional claim — same guard used for stand-in requests — so two
   // admins actioning the same pending leave request can't silently overwrite
   // each other (e.g. one approves, one rejects, moments apart).
@@ -328,7 +333,7 @@ export async function approveLeave(adminId: string, leaveId: string, adminNotes?
     where: { id: leaveId, status: 'PENDING' },
     data: {
       status: 'APPROVED',
-      approvedById: adminId,
+      approvedById: admin.id,
       approvedAt: new Date(),
       adminNotes: adminNotes ? sanitizeLongText(adminNotes) : null,
     }
@@ -338,17 +343,17 @@ export async function approveLeave(adminId: string, leaveId: string, adminNotes?
 }
 
 export async function rejectLeave(adminId: string, leaveId: string, adminNotes?: string) {
-  await requireAdmin(adminId)
+  const admin = await requireAdmin()
   const result = await db.memberLeave.updateMany({
     where: { id: leaveId, status: 'PENDING' },
-    data: { status: 'REJECTED', approvedById: adminId, approvedAt: new Date(), adminNotes: adminNotes ? sanitizeLongText(adminNotes) : null }
+    data: { status: 'REJECTED', approvedById: admin.id, approvedAt: new Date(), adminNotes: adminNotes ? sanitizeLongText(adminNotes) : null }
   })
   if (result.count === 0) throw new Error(ALREADY_ACTIONED)
   revalidatePath('/admin/leave')
 }
 
 export async function cancelLeave(adminId: string, leaveId: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const result = await db.memberLeave.updateMany({
     where: { id: leaveId, status: { in: ['PENDING', 'APPROVED'] } },
     data: { status: 'CANCELLED' }
@@ -364,7 +369,7 @@ export async function createLeave(adminId: string, data: {
   leaveType: string
   notes?: string
 }) {
-  await requireAdmin(adminId)
+  const admin = await requireAdmin()
   const startDate = new Date(data.startDate)
   const endDate = new Date(data.endDate)
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
@@ -373,7 +378,7 @@ export async function createLeave(adminId: string, data: {
   if (endDate < startDate) throw new Error('End date must be on or after the start date.')
   const notes = data.notes ? sanitizeLongText(data.notes) : undefined
   await db.memberLeave.create({
-    data: { ...data, startDate, endDate, notes, status: 'APPROVED', approvedById: adminId, approvedAt: new Date() }
+    data: { ...data, startDate, endDate, notes, status: 'APPROVED', approvedById: admin.id, approvedAt: new Date() }
   })
   revalidatePath('/admin/leave')
 }
@@ -381,7 +386,7 @@ export async function createLeave(adminId: string, data: {
 //  STAND-IN REQUESTS (admin cancel) 
 
 export async function cancelStandInRequest(adminId: string, requestId: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   // Conditional update guards against cancelling a request a member has
   // just claimed — only cancel while it's still PENDING.
   const result = await db.standInRequest.updateMany({
@@ -396,7 +401,7 @@ export async function cancelStandInRequest(adminId: string, requestId: string) {
 //  ROSTER GENERATION 
 
 export async function generateRoster(adminId: string, startDateStr: string, days: number) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const { generateRosterForDateRange } = await import('@/lib/roster-engine')
   await generateRosterForDateRange(startDateStr, days)
   revalidatePath('/')
@@ -404,7 +409,7 @@ export async function generateRoster(adminId: string, startDateStr: string, days
 }
 
 export async function clearRosterRange(adminId: string, startDateStr: string, endDateStr: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const { nzMidnightUTC, addDaysToDateString } = await import('@/lib/timezone')
   const start = nzMidnightUTC(startDateStr)
   const end = nzMidnightUTC(addDaysToDateString(endDateStr, 1))
@@ -434,7 +439,7 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
 // keep whatever mode/selection they're in and pending edits queued across
 // multiple months survive the switch.
 export async function getRosterCalendarMonth(adminId: string, monthStr: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const { getRosterCalendarSlotsByDate } = await import('@/lib/roster-calendar-data')
   return getRosterCalendarSlotsByDate(monthStr)
 }
@@ -448,7 +453,7 @@ export type RosterCalendarChange =
   | { type: 'addAppliance'; dateStr: string; applianceName: string; crewId: string }
 
 export async function applyRosterCalendarChanges(adminId: string, changes: RosterCalendarChange[]) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   const { nzMidnightUTC } = await import('@/lib/timezone')
   const { isWeekendDate, getShiftTimesForDate, createAssignmentsForSlot } = await import('@/lib/roster-engine')
 
@@ -458,6 +463,14 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
     for (const change of changes) {
       if (change.type === 'cancel') {
         await tx.shiftSlot.update({ where: { id: change.slotId }, data: { status: 'CANCELLED' } })
+        // Cancelling a shift must also cancel any of its own PENDING requests
+        // — otherwise a member could still accept cover for a shift that no
+        // longer exists, creating real assignments/hour-ledger entries
+        // against it.
+        await tx.standInRequest.updateMany({
+          where: { slotId: change.slotId, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        })
         continue
       }
 
@@ -504,7 +517,7 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
 
 // SYSTEM CONFIG
 export async function updateSystemConfig(adminId: string, key: string, value: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.systemConfig.upsert({
     where: { key },
     update: { value },
@@ -515,7 +528,7 @@ export async function updateSystemConfig(adminId: string, key: string, value: st
 
 //HOUR LEDGER (manual adjustment) 
 export async function addHourAdjustment(adminId: string, memberId: string, hoursChange: number, notes: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   if (typeof hoursChange !== 'number' || Number.isNaN(hoursChange) || !Number.isFinite(hoursChange)) {
     throw new Error('Hours must be a valid number.')
   }
@@ -540,14 +553,14 @@ export async function createAnnouncement(adminId: string, data: {
   title: string
   body: string
 }) {
-  await requireAdmin(adminId)
+  const admin = await requireAdmin()
 
   const title = sanitizeText(data.title)
   if (!title) throw new Error('A title is required.')
   const body = sanitizeLongText(data.body)
 
   await db.announcement.create({
-    data: { title, body, createdById: adminId }
+    data: { title, body, createdById: admin.id }
   })
 
   after(async () => {
@@ -570,7 +583,7 @@ export async function updateAnnouncement(adminId: string, announcementId: string
   title?: string
   body?: string
 }) {
-  await requireAdmin(adminId)
+  const admin = await requireAdmin()
 
   const title = data.title !== undefined ? sanitizeText(data.title) : undefined
   if (title === '') throw new Error('Title cannot be empty.')
@@ -578,14 +591,14 @@ export async function updateAnnouncement(adminId: string, announcementId: string
 
   await db.announcement.update({
     where: { id: announcementId },
-    data: { ...data, title, body, updatedById: adminId }
+    data: { ...data, title, body, updatedById: admin.id }
   })
   revalidatePath('/admin/announcements')
   revalidatePath('/')
 }
 
 export async function deleteAnnouncement(adminId: string, announcementId: string) {
-  await requireAdmin(adminId)
+  await requireAdmin()
   await db.announcement.update({ where: { id: announcementId }, data: { isActive: false } })
   revalidatePath('/admin/announcements')
   revalidatePath('/')

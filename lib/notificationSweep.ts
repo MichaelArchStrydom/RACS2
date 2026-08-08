@@ -23,7 +23,20 @@ export async function runNotificationSweep() {
     },
     include: { slot: true },
   })
+  let staleSentCount = 0
   for (const request of staleRequests) {
+    // Atomically claim this row before sending — guards against two
+    // concurrent sweep runs (an unauthenticated retry, a duplicate cron
+    // delivery) both reading the same "not yet sent" row and double-sending.
+    // Only the invocation whose updateMany actually matches a row (count===1)
+    // proceeds to send for it.
+    const claim = await db.standInRequest.updateMany({
+      where: { id: request.id, staleReminderSentAt: null },
+      data: { staleReminderSentAt: now },
+    })
+    if (claim.count === 0) continue
+    staleSentCount++
+
     const recipients = await db.member.findMany({
       where: { isActive: true, notifyStaleCoverReminder: true },
       select: { id: true },
@@ -33,7 +46,6 @@ export async function runNotificationSweep() {
       body: `${request.slot.appliance} on ${formatSlotDate(request.slot.date)} still needs cover — the shift is coming up.`,
       url: '/',
     })
-    await db.standInRequest.update({ where: { id: request.id }, data: { staleReminderSentAt: now } })
   }
 
   const nudge24hRequests = await db.standInRequest.findMany({
@@ -45,7 +57,15 @@ export async function runNotificationSweep() {
     },
     include: { slot: true, requestedBy: true },
   })
+  let nudge24hSentCount = 0
   for (const request of nudge24hRequests) {
+    const claim = await db.standInRequest.updateMany({
+      where: { id: request.id, reminder24hSentAt: null },
+      data: { reminder24hSentAt: now },
+    })
+    if (claim.count === 0) continue
+    nudge24hSentCount++
+
     if (request.requestedBy.notifyMyRequestUpdates) {
       await sendPushToMember(request.requestedById, {
         title: 'Still no cover for your shift',
@@ -53,7 +73,6 @@ export async function runNotificationSweep() {
         url: '/',
       })
     }
-    await db.standInRequest.update({ where: { id: request.id }, data: { reminder24hSentAt: now } })
   }
 
   const nudge1hRequests = await db.standInRequest.findMany({
@@ -64,7 +83,15 @@ export async function runNotificationSweep() {
     },
     include: { slot: true, requestedBy: true },
   })
+  let nudge1hSentCount = 0
   for (const request of nudge1hRequests) {
+    const claim = await db.standInRequest.updateMany({
+      where: { id: request.id, reminder1hSentAt: null },
+      data: { reminder1hSentAt: now },
+    })
+    if (claim.count === 0) continue
+    nudge1hSentCount++
+
     if (request.requestedBy.notifyMyRequestUpdates) {
       await sendPushToMember(request.requestedById, {
         title: 'Shift starts in an hour — still uncovered',
@@ -72,12 +99,11 @@ export async function runNotificationSweep() {
         url: '/',
       })
     }
-    await db.standInRequest.update({ where: { id: request.id }, data: { reminder1hSentAt: now } })
   }
 
   return {
-    staleReminders: staleRequests.length,
-    nudge24h: nudge24hRequests.length,
-    nudge1h: nudge1hRequests.length,
+    staleReminders: staleSentCount,
+    nudge24h: nudge24hSentCount,
+    nudge1h: nudge1hSentCount,
   }
 }

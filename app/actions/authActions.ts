@@ -21,12 +21,16 @@ export type LoginState = { error: string } | null
  *     that would reveal whether a username exists by measuring response time)
  *   - Username is lowercased before lookup so login is case-insensitive
  */
+const MAX_FAILED_ATTEMPTS = 5
+const LOCKOUT_MS = 15 * 60 * 1000 // 15 minutes
+
 export async function loginAction(prevState: LoginState, formData: FormData): Promise<LoginState> {
   const username = ((formData.get('username') as string) ?? '').trim().toLowerCase()
   const password = (formData.get('password') as string) ?? ''
   const rememberMe = formData.get('rememberMe') === 'on'
 
   const FAIL: LoginState = { error: 'Invalid username or password.' }
+  const LOCKED: LoginState = { error: 'Too many failed attempts. Try again in 15 minutes.' }
 
   // Basic presence check
   if (!username || !password) return FAIL
@@ -41,8 +45,30 @@ export async function loginAction(prevState: LoginState, formData: FormData): Pr
 
   const valid = await verifyPassword(password, hashToCheck)
 
+  if (member?.lockedUntil && member.lockedUntil > new Date()) return LOCKED
+
   // Both checks must pass
-  if (!member || !member.isActive || !valid) return FAIL
+  if (!member || !member.isActive || !valid) {
+    if (member) {
+      const attempts = member.failedLoginAttempts + 1
+      await db.member.update({
+        where: { id: member.id },
+        data: {
+          failedLoginAttempts: attempts,
+          lockedUntil: attempts >= MAX_FAILED_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MS) : null,
+        },
+      })
+    }
+    return FAIL
+  }
+
+  // Reset the counter on a success
+  if (member.failedLoginAttempts > 0 || member.lockedUntil) {
+    await db.member.update({
+      where: { id: member.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    })
+  }
 
   await createSession(member.id, rememberMe)
   redirect('/')

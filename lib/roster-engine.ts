@@ -25,9 +25,13 @@ export function getShiftTimesForDate(dateStr: string, isWeekend: boolean): { shi
   return { shiftStart, shiftEnd }
 }
 
-export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { assignedCrewIndex: number; backupCrewIndex: number } {
+export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { assignedCrewIndex: number; backupCrewIndex: number | null } {
   const assignedCrewIndex = Math.abs(dayIndex % crewCount)
-  const backupCrewIndex = (assignedCrewIndex + 1) % crewCount
+  // With only one crew, (assignedCrewIndex + 1) % crewCount wraps back to the
+  // same index — there is no distinct second crew to back it up, so callers
+  // must not seat it onto a second truck too (that would double-book the
+  // same members onto two simultaneous shifts and double-count their hours).
+  const backupCrewIndex = crewCount > 1 ? (assignedCrewIndex + 1) % crewCount : null
   return { assignedCrewIndex, backupCrewIndex }
 }
 
@@ -44,8 +48,15 @@ export async function getMonthlyRosteredHours(memberId: string, memberCrewId: st
   // consistent tie-break ordering across separate queries, which could
   // otherwise make this function disagree with generateRosterForDateRange
   // about which crew is "assigned" vs "backup" for a given day.
+
   const crews = await db.crew.findMany({
-    include: { members: { include: { qualifications: { include: { qualification: true } } } } },
+    where: { isActive: true },
+    include: {
+      members: {
+        where: { isActive: true },
+        include: { qualifications: { include: { qualification: true } } }
+      }
+    },
     orderBy: [{ crewOrder: 'asc' }, { id: 'asc' }]
   })
   const memberCrewIndex = crews.findIndex(c => c.id === memberCrewId)
@@ -113,8 +124,9 @@ export function buildSeatLineup(crew: any): { role: string; member: any }[] {
   }
 
   const isRecruit = (m: any) => m.rank === 'RCFF'
-  const isOfficerQualified = (m: any) => m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')
-  const isDriverQualified = (m: any) => m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')
+
+  const isOfficerQualified = (m: any) => !isRecruit(m) && m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')
+  const isDriverQualified = (m: any) => !isRecruit(m) && m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')
 
   const oic = extract(isOfficerQualified)
   const driver = extract(isDriverQualified)
@@ -163,8 +175,10 @@ export async function createAssignmentsForSlot(
 
 export async function generateRosterForDateRange(startDateStr: string, daysToGenerate: number) {
   const crews = await db.crew.findMany({
+    where: { isActive: true },
     include: {
       members: {
+        where: { isActive: true },
         include: {
           qualifications: {
             include: {
@@ -174,9 +188,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
         }
       }
     },
-    // Stable secondary sort — see the matching comment in
-    // getMonthlyRosteredHours, which relies on this query producing the
-    // exact same crew ordering.
+
     orderBy: [{ crewOrder: 'asc' }, { id: 'asc' }]
   })
 
@@ -203,7 +215,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
       const { assignedCrewIndex, backupCrewIndex } = getCrewIndicesForDay(dayIndex, crews.length)
 
       const activeCrew = crews[assignedCrewIndex]
-      const backupCrew = crews[backupCrewIndex]
+      const backupCrew = backupCrewIndex !== null ? crews[backupCrewIndex] : null
 
       const isWeekend = isWeekendDate(dateStr)
       const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend)
@@ -222,9 +234,13 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
         await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
       }
 
-      // Generate both trucks
+      // Generate both trucks but with only one active crew, there's no
+      // distinct backup, so only 1st Due gets generated for that day rather
+      // than double-booking the same crew onto both trucks at once.
       await assignTruckLineup(activeCrew, '1st Due')
-      await assignTruckLineup(backupCrew, '2nd Due')
+      if (backupCrew) {
+        await assignTruckLineup(backupCrew, '2nd Due')
+      }
     }
   }, { timeout: 30000 })
 

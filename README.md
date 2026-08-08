@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RACS2 — Roster & Cover System
+A roster and shift-management system built for the Silverdale volunteer fire brigade with crew rotation scheduling, cover/stand-in requests, hour-balance tracking, and push notifications. This web-app is currently in use by real first responders, helping them co-ordinate and communicate using a feature rich, modern platform designed just for them.
 
-## Getting Started
+## What it does
 
-First, run the development server:
+- **Crew rotation**: a crew based rotation cycle assigns crews to trucks day by day. Admins can reorder crews using an intuitive order picker rather than editing opaque backend numbers directly.
+- **Roster generation**: bulk-generates shifts across a date range, filling seats (Eg. OIC, Driver, FF1–FF3) from each crew's members, respecting qualification requirements and per-appliance custom seat configuration.
+- **Cover / stand-in requests**: members can post part or all of their shift for cover, others can accept full or partial time slices, with automatic time-splitting of the underlying assignment. Admins and moderators can act on a member's behalf.
+- **Hour balance ledger**: tracks who's covered more shifts than they've had covered, with a full audit trail and month-ahead projections that stay consistent with actual roster generation.
+- **Admin roster calendar**: a visual month editor for batching edits (cancel a shift, replace a crew, add an appliance) that commit atomically, with a draft/preview mode before publishing changes live.
+- **Push notifications**: new cover requests, announcements, and stale-request reminders, with per-category opt-in preferences and a background sweep for time-based nudges.
+- **Access control**: session-based auth (Member / Moderator / Admin), rate-limited login with account lockout.
+- Leave requests, public holidays, qualification tracking, and brigade-wide announcements round out the admin toolset.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Tech stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Next.js 16** (App Router, Server Actions, Server Components)
+- **TypeScript** throughout
+- **PostgreSQL** (Neon serverless) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter
+- **Tailwind CSS**
+- **Web Push API** (VAPID) for native push notifications, with a service worker for offline/PWA support
+- **Vercel** for hosting, with Vercel Cron for the scheduled notification sweep
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+![Roster Grid Screenshot](docs/screenshotofroster.png)
 
-## Learn More
+(Names replaced with dashes for privacy)
 
-To learn more about Next.js, take a look at the following resources:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

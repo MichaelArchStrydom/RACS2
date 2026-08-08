@@ -43,7 +43,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   //Simultaneous execusion optimised for vercels slow performance
   const [activeSlots, standInRequests, activeAppliances, allAnnouncements] = await Promise.all([
     db.shiftSlot.findMany({
-      where: { date: { gte: startDate, lt: endDate } },
+      where: { date: { gte: startDate, lt: endDate }, status: { not: 'CANCELLED' } },
       include: {
         requests: true,
         assignments: {
@@ -60,7 +60,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       orderBy: { date: 'asc' },
     }),
     db.standInRequest.findMany({
-      where: { slot: { date: { gte: startDate, lt: endDate } } },
+      where: { slot: { date: { gte: startDate, lt: endDate }, status: { not: 'CANCELLED' } } },
       include: {
         slot: true,
         requestedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -150,7 +150,7 @@ export default async function HomePage({ searchParams }: PageProps) {
 
   // Same shape/filter as userShifts, generalized to every member using the
   // already-fetched slots (no extra query): a member's own uncovered
-  // assignment, or one they're currently covering — keyed by ownerId so the
+  // assignment, or one they're currently covering keyed by ownerId so the
   // on-behalf form can filter to the chosen member.
   // (Every assignment slice is requestable by exactly its current owner, so
   // no filter is needed — the per-member filter in userShifts is just the
