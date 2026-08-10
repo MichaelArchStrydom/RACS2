@@ -57,7 +57,7 @@ function splitRankAndName(fullText: string): { rank: string; name: string } {
   return { rank: trimmed.slice(0, spaceIndex), name: trimmed.slice(spaceIndex + 1).trim() }
 }
 
-const FETCH_TIMEOUT_MS = 8000
+const FETCH_TIMEOUT_MS = 25000
 
 export async function fetchMusterData(): Promise<MusterPageData> {
   const res = await fetch(MUSTER_PAGE_URL, {

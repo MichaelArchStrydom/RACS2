@@ -63,6 +63,7 @@ export default async function OsmPage() {
     data = await fetchMusterData()
   } catch (e: any) {
     error = e?.message ?? 'Failed to load OSM data.'
+    console.error('OSM page: fetchMusterData failed:', e)
   }
 
   return (

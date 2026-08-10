@@ -66,6 +66,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
     osmRows = (await osmFetchPromise).rows
   } catch (e: any) {
     osmError = e?.message ?? 'Failed to load OSM data.'
+    console.error('Member detail page: fetchMusterData failed:', e)
   }
   const currentOsmMatch = member.osmId ? osmRows.find((r) => r.osmId === member.osmId) ?? null : null
   const suggestedOsmMatch = !member.osmId ? matchMemberToOsm(member, osmRows) : null
