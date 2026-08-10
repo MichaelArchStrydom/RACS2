@@ -8,6 +8,7 @@ const memberNavItems = [
   { href: '/profile', label: 'Profile & Settings', widthClass: 'max-w-2xl' },
   { href: '/contacts', label: 'Contacts', widthClass: 'max-w-2xl' },
   { href: '/stats', label: 'Hour Leaderboard', widthClass: 'max-w-3xl' },
+  { href: '/osm', label: 'OSM Attendance', widthClass: 'max-w-7xl' },
 ]
 
 interface MemberLayoutShellProps {

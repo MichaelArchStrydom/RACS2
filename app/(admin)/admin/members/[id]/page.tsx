@@ -2,10 +2,11 @@ export const dynamic = 'force-dynamic'
 import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword } from '@/app/actions/adminActions'
+import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword, updateMemberOsmLink } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 import { ArrowLeft, Check } from 'lucide-react'
 import { roundHoursForDisplay } from '@/lib/formatHours'
+import { fetchMusterData, matchMemberToOsm } from '@/lib/dashboardLiveOsm'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -24,6 +25,8 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
 
   const adminMember = await db.member.findUnique({ where: { id: userId } })
   if (!adminMember?.isAdmin) redirect('/')
+
+  const osmFetchPromise = fetchMusterData()
 
   const [member, crews, allQuals, leaveRecords, ledgerEntries] = await Promise.all([
     db.member.findUnique({
@@ -55,6 +58,17 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   const memberQualKeys = new Set(
     member.qualifications.filter((mq: any) => mq.isActive).map((mq: any) => mq.qualification.key)
   )
+
+  // DashboardLive is slow/unreachable, the OSM section just degrades
+  let osmRows: Awaited<ReturnType<typeof fetchMusterData>>['rows'] = []
+  let osmError: string | null = null
+  try {
+    osmRows = (await osmFetchPromise).rows
+  } catch (e: any) {
+    osmError = e?.message ?? 'Failed to load OSM data.'
+  }
+  const currentOsmMatch = member.osmId ? osmRows.find((r) => r.osmId === member.osmId) ?? null : null
+  const suggestedOsmMatch = !member.osmId ? matchMemberToOsm(member, osmRows) : null
 
   return (
     <div className="space-y-6">
@@ -271,6 +285,71 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
           </div>
         </section>
       </div>
+
+      {/* ── OSM link ── */}
+      <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-slate-700">DashboardLive OSM Link</h2>
+        <p className="text-xs text-slate-400">
+          Links this member to their training/skills profile in DashboardLive's OSM system, so their status can
+          show up in RACS2. Name matching between the two systems isn't always reliable — check the pick below is
+          actually them before saving.
+        </p>
+
+        {osmError && (
+          <p className="text-xs text-rose-600">Couldn't load the OSM member list: {osmError}</p>
+        )}
+
+        {!osmError && (
+          <>
+            <p className="text-xs text-slate-600">
+              {currentOsmMatch ? (
+                <>Currently linked to <span className="font-semibold">{currentOsmMatch.rank} {currentOsmMatch.name}</span>.</>
+              ) : suggestedOsmMatch ? (
+                <>Not linked yet — auto-matched suggestion: <span className="font-semibold">{suggestedOsmMatch.rank} {suggestedOsmMatch.name}</span>. Confirm below.</>
+              ) : (
+                <>Not linked, and no confident auto-match was found — pick manually below.</>
+              )}
+            </p>
+
+            <form
+              action={async (fd: FormData) => {
+                'use server'
+                const adminId = fd.get('adminId') as string
+                const mId = fd.get('memberId') as string
+                try {
+                  await updateMemberOsmLink(adminId, mId, (fd.get('osmId') as string) || null)
+                  redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('OSM link updated')}`)
+                } catch (e: any) {
+                  if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+                  redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+                }
+              }}
+              className="flex gap-2 items-end flex-wrap"
+            >
+              <input type="hidden" name="adminId" value={userId} />
+              <input type="hidden" name="memberId" value={memberId} />
+              <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
+                <label className="text-xs font-semibold text-slate-500">OSM Member</label>
+                <select
+                  name="osmId"
+                  defaultValue={member.osmId ?? suggestedOsmMatch?.osmId ?? ''}
+                  className="border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— Not linked —</option>
+                  {osmRows.filter((row) => row.osmId).map((row) => (
+                    <option key={row.osmId} value={row.osmId!}>
+                      {row.rank} {row.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors">
+                Save Link
+              </button>
+            </form>
+          </>
+        )}
+      </section>
 
       {/* ── Hour ledger ── */}
       <section className="bg-white rounded-xl border shadow-sm p-5 space-y-4">

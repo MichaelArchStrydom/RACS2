@@ -25,11 +25,7 @@ export async function runNotificationSweep() {
   })
   let staleSentCount = 0
   for (const request of staleRequests) {
-    // Atomically claim this row before sending — guards against two
-    // concurrent sweep runs (an unauthenticated retry, a duplicate cron
-    // delivery) both reading the same "not yet sent" row and double-sending.
-    // Only the invocation whose updateMany actually matches a row (count===1)
-    // proceeds to send for it.
+
     const claim = await db.standInRequest.updateMany({
       where: { id: request.id, staleReminderSentAt: null },
       data: { staleReminderSentAt: now },

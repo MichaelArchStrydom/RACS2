@@ -145,6 +145,28 @@ export async function deactivateMember(adminId: string, memberId: string) {
   revalidatePath('/admin/members')
 }
 
+// auto matching gets it right most of the time, but not always, so
+// this is how an admin sets or corrects it manually.
+export async function updateMemberOsmLink(adminId: string, memberId: string, osmId: string | null) {
+  await requireAdmin()
+  const cleanOsmId = osmId || null
+
+  // Two members pointing at the same OSM profile would silently show one of
+  // them a stranger's real training/skill status reject rather than allow it.
+  if (cleanOsmId) {
+    const conflict = await db.member.findFirst({
+      where: { osmId: cleanOsmId, id: { not: memberId } },
+      select: { firstName: true, lastName: true },
+    })
+    if (conflict) {
+      throw new Error(`Already linked to ${conflict.firstName} ${conflict.lastName} — unlink them first.`)
+    }
+  }
+
+  await db.member.update({ where: { id: memberId }, data: { osmId: cleanOsmId } })
+  revalidatePath(`/admin/members/${memberId}`)
+}
+
 //QUALIFICATIONS
 export async function setMemberQualification(adminId: string, memberId: string, qualKey: string, active: boolean) {
   await requireAdmin()

@@ -14,10 +14,14 @@ model Member {
   crewId String?
   crew   Crew?   @relation(fields: [crewId], references: [id])
 
-  firstName         String
-  lastName          String
-  email             String? //Made emails optional. Chris seemed apprehensive to make them the key identifier
-  phone             String? // optional contact number, editable by the member themselves
+  firstName String
+  lastName  String
+  email     String? //Made emails optional. Chris seemed apprehensive to make them the key identifier
+  phone     String? // optional contact number, editable by the member themselves
+
+  // Links this member to their profile in DashboardLive's OSM system 
+  osmId String?
+
   //login attributes:
   username          String    @unique
   password          String //Hashed Passwords
@@ -157,16 +161,16 @@ model MemberQualification {
 // PHASE 2: add applianceId FK to ShiftSlot and migrate the string data.
 // For now, name must exactly match the strings used in the roster engine.
 model Appliance {
-  id           String   @id @default(uuid())
-  name         String   @unique // must match ShiftSlot.appliance string value
+  id           String  @id @default(uuid())
+  name         String  @unique // must match ShiftSlot.appliance string value
   displayOrder Int
-  seatCount    Int      @default(5) // total seats on this appliance
-  minimumCrew  Int      @default(4) // below this = short-crewed warning
-  isActive     Boolean  @default(true)
+  seatCount    Int     @default(5) // total seats on this appliance
+  minimumCrew  Int     @default(4) // below this = short-crewed warning
+  isActive     Boolean @default(true)
   // Each seat as one atomic { label, abbr } pair — a single array of paired
   // values instead of two parallel arrays, so a seat's name and abbreviation
   // can never drift out of sync the way seatLabels/seatAbbr just did for Tanker.
-  seats        Json     @default("[{\"label\":\"OIC\",\"abbr\":\"OIC\"},{\"label\":\"Driver\",\"abbr\":\"Dvr\"},{\"label\":\"FF1\",\"abbr\":\"FF1\"},{\"label\":\"FF2\",\"abbr\":\"FF2\"},{\"label\":\"FF3\",\"abbr\":\"FF3\"}]")
+  seats        Json    @default("[{\"label\":\"OIC\",\"abbr\":\"OIC\"},{\"label\":\"Driver\",\"abbr\":\"Dvr\"},{\"label\":\"FF1\",\"abbr\":\"FF1\"},{\"label\":\"FF2\",\"abbr\":\"FF2\"},{\"label\":\"FF3\",\"abbr\":\"FF3\"}]")
   notes        String?
 }
 

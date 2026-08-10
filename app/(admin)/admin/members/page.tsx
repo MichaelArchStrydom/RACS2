@@ -58,7 +58,15 @@ export default async function MembersPage({ searchParams }: PageProps) {
         </div>
       )}
 
-      <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm text-slate-500">{members.filter((m: any) => m.isActive).length} active · {members.length} total</p>
+        <Link
+          href="/osm"
+          className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+        >
+          View OSM attendance →
+        </Link>
+      </div>
 
       {/* Search */}
       <form method="GET" className="flex gap-2">

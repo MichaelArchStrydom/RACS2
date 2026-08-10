@@ -7,6 +7,7 @@ import { useBodyScrollLock } from '@/components/useBodyScrollLock'
 import {
   X, LayoutDashboard, Users, GraduationCap, UsersRound, Truck,
   Calendar, Megaphone, Palmtree, Settings, LayoutGrid, CircleUserRound, Phone, BarChart3, Bell,
+  ClipboardCheck,
 } from 'lucide-react'
 
 interface NavMenuPanelProps {
@@ -36,6 +37,7 @@ export default function NavMenuPanel({ isAdmin, userId, memberName }: NavMenuPan
     { href: '/profile', label: 'Profile & Settings', icon: CircleUserRound },
     { href: '/contacts', label: 'Contacts', icon: Phone },
     { href: '/stats', label: 'Stats', icon: BarChart3 },
+    { href: '/osm', label: 'OSM', icon: ClipboardCheck },
   ]
 
   return (
