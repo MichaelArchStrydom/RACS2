@@ -330,7 +330,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
             >
               <input type="hidden" name="adminId" value={userId} />
               <input type="hidden" name="memberId" value={memberId} />
-              <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
+              <div className="flex flex-col gap-1 flex-1 min-w-60">
                 <label className="text-xs font-semibold text-slate-500">OSM Member</label>
                 <select
                   name="osmId"

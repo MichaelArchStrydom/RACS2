@@ -1,0 +1,16 @@
+[Unit]
+Description=RACS2 OSM DashboardLive proxy
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/osm-proxy
+EnvironmentFile=/home/pi/osm-proxy/osm-proxy.env
+ExecStart=/usr/bin/node /home/pi/osm-proxy/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

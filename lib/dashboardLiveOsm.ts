@@ -4,8 +4,13 @@ import * as cheerio from 'cheerio'
 // also uses, separate from racs2. This is a live mirror, not an import it
 // fetches and reparses their page fresh on every request. nothing from it is
 // stored in racs2 own database. If DashboardLive changes their HTML, this breaks
-const MUSTER_PAGE_URL =
-  'https://www.dashboardlive.nz/musters.php?bu=%7B1B421B9F-6A82-4C06-8828-EEE7A2EC7694%7D'
+// DashboardLive's host does not answer connections from Vercel's datacenter
+// offloaded to raspberry pi at home
+
+const BU = '{1B421B9F-6A82-4C06-8828-EEE7A2EC7694}'
+const DIRECT_MUSTER_URL = `https://www.dashboardlive.nz/musters.php?bu=${encodeURIComponent(BU)}`
+const OSM_PROXY_URL = process.env.OSM_PROXY_URL
+const OSM_PROXY_SECRET = process.env.OSM_PROXY_SECRET
 
 export interface MemberMusterRow {
   osmId: string | null
@@ -57,18 +62,27 @@ function splitRankAndName(fullText: string): { rank: string; name: string } {
   return { rank: trimmed.slice(0, spaceIndex), name: trimmed.slice(spaceIndex + 1).trim() }
 }
 
-const FETCH_TIMEOUT_MS = 25000
+const FETCH_TIMEOUT_MS = 20000
 
-export async function fetchMusterData(): Promise<MusterPageData> {
-  const res = await fetch(MUSTER_PAGE_URL, {
+async function fetchDashboardLiveHtml(directUrl: string, proxyPath: string): Promise<string> {
+  const useProxy = !!OSM_PROXY_URL
+  if (useProxy && !OSM_PROXY_SECRET) throw new Error('OSM_PROXY_SECRET is not configured')
+
+  const res = await fetch(useProxy ? `${OSM_PROXY_URL}${proxyPath}` : directUrl, {
     cache: 'no-store',
-    headers: { 'User-Agent': 'Mozilla/5.0 (RACS2 muster mirror)' },
+    headers: useProxy
+      ? { 'X-Osm-Proxy-Secret': OSM_PROXY_SECRET! }
+      : { 'User-Agent': 'Mozilla/5.0 (RACS2 OSM mirror)' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
   if (!res.ok) {
     throw new Error(`DashboardLive returned ${res.status} ${res.statusText}`)
   }
-  const html = await res.text()
+  return res.text()
+}
+
+export async function fetchMusterData(): Promise<MusterPageData> {
+  const html = await fetchDashboardLiveHtml(DIRECT_MUSTER_URL, '/musters')
   const $ = cheerio.load(html)
 
   const dateLikeText = /^[A-Za-z]{3}\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}$/
@@ -151,17 +165,8 @@ function classifySkillColor(bg: string | undefined): OsmSkillStatus {
 }
 
 export async function fetchMemberOsmSkills(osmId: string): Promise<OsmSkill[]> {
-  const bu = '{1B421B9F-6A82-4C06-8828-EEE7A2EC7694}'
-  const url = `https://www.dashboardlive.nz/osmindividual.php?id=${encodeURIComponent(osmId)}&bu=${encodeURIComponent(bu)}`
-  const res = await fetch(url, {
-    cache: 'no-store',
-    headers: { 'User-Agent': 'Mozilla/5.0 (RACS2 OSM mirror)' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!res.ok) {
-    throw new Error(`DashboardLive returned ${res.status} ${res.statusText}`)
-  }
-  const html = await res.text()
+  const directUrl = `https://www.dashboardlive.nz/osmindividual.php?id=${encodeURIComponent(osmId)}&bu=${encodeURIComponent(BU)}`
+  const html = await fetchDashboardLiveHtml(directUrl, `/individual?id=${encodeURIComponent(osmId)}`)
   const $ = cheerio.load(html)
 
   const skills: OsmSkill[] = []
