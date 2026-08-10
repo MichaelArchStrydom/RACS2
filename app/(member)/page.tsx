@@ -89,8 +89,8 @@ export default async function HomePage({ searchParams }: PageProps) {
   if (osmFetchPromise) {
     try {
       myOsmStatus = computeOsmAggregateStatus(await osmFetchPromise)
-    } catch (e) {
-      console.error('Home page: fetchMemberOsmSkills failed:', e)
+    } catch (e: any) {
+      console.error('Home page: fetchMemberOsmSkills failed:', e, 'cause:', e?.cause)
     }
   }
 
