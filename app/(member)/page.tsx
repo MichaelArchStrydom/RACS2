@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { formatDistanceToNow } from 'date-fns'
 import RosterGrid from '@/components/roster/RosterGrid'
 import Link from 'next/link'
 import RequestsBoard from '@/components/roster/RequestsBoard'
@@ -10,7 +11,8 @@ import AnnouncementsPreview from '@/components/announcements/AnnouncementsPrevie
 import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
 import { RosterInteractionProvider } from '@/components/roster/RosterInteractionContext'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { fetchMemberOsmSkills, computeOsmAggregateStatus, type OsmAggregateStatus } from '@/lib/dashboardLiveOsm'
+
+type OsmStatusColor = 'red' | 'yellow' | 'green'
 
 interface PageProps {
   searchParams: Promise<{ date?: string }>
@@ -21,8 +23,6 @@ export default async function HomePage({ searchParams }: PageProps) {
   const activeUserId = currentMember.id
   const params = await searchParams;
   const targetDateStr = params.date;
-
-  const osmFetchPromise = currentMember.osmId ? fetchMemberOsmSkills(currentMember.osmId) : null
 
   // Anchor on the NZ calendar date, not the server's own "today" — Vercel
   // runs in UTC, so new Date() there can already be a different calendar
@@ -83,16 +83,16 @@ export default async function HomePage({ searchParams }: PageProps) {
     })
   ]);
 
-  // Best-effort — a missing OSM link or DashboardLive being unreachable
-  // should never break the roster page, the badge just doesn't show.
-  let myOsmStatus: OsmAggregateStatus | null = null
-  if (osmFetchPromise) {
-    try {
-      myOsmStatus = computeOsmAggregateStatus(await osmFetchPromise)
-    } catch (e: any) {
-      console.error('Home page: fetchMemberOsmSkills failed:', e, 'cause:', e?.cause)
-    }
-  }
+  // Read from the cache populated by the Pi's periodic refresh job
+  // (ops/osm-status-refresher) — never fetched live on page view. Null until
+  // the member is linked and the first refresh has run for them.
+  const myOsmStatus = currentMember.osmStatusColor
+    ? {
+        color: currentMember.osmStatusColor as OsmStatusColor,
+        overdueCount: currentMember.osmOverdueCount ?? 0,
+        dueSoonCount: currentMember.osmDueSoonCount ?? 0,
+      }
+    : null
 
   const groupedData: Record<string, any[]> = {};
   activeSlots.forEach((slot) => {
@@ -192,12 +192,12 @@ export default async function HomePage({ searchParams }: PageProps) {
     )
     : undefined;
 
-  const osmBadgeColors: Record<OsmAggregateStatus['color'], string> = {
+  const osmBadgeColors: Record<OsmStatusColor, string> = {
     red: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100',
     yellow: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
     green: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
   }
-  const osmBadgeEmoji: Record<OsmAggregateStatus['color'], string> = { red: '🔴', yellow: '🟡', green: '🟢' }
+  const osmBadgeEmoji: Record<OsmStatusColor, string> = { red: '🔴', yellow: '🟡', green: '🟢' }
 
   return (
     <>
@@ -212,7 +212,14 @@ export default async function HomePage({ searchParams }: PageProps) {
             rel="noopener noreferrer"
             className={`flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded-lg text-sm font-semibold border transition-colors ${osmBadgeColors[myOsmStatus.color]}`}
           >
-            <span>OSM Status: {osmBadgeEmoji[myOsmStatus.color]}</span>
+            <span>
+              OSM Status: {osmBadgeEmoji[myOsmStatus.color]}
+              {currentMember.osmStatusCheckedAt && (
+                <span className="text-[10px] font-normal opacity-70 ml-1.5">
+                  (checked {formatDistanceToNow(currentMember.osmStatusCheckedAt, { addSuffix: true })})
+                </span>
+              )}
+            </span>
             {myOsmStatus.color !== 'green' && (
               <span className="text-xs font-normal">
                 {[

@@ -1,0 +1,8 @@
+{
+  "name": "osm-status-refresher",
+  "private": true,
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "pg": "^8.22.0"
+  }
+}

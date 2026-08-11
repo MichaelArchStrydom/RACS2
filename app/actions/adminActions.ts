@@ -8,6 +8,7 @@ import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeTe
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { sendPushToMembers } from '@/lib/push'
 import { epochDayIndex } from '@/lib/roster-engine'
+import { fetchMusterData, matchMemberToOsm } from '@/lib/dashboardLiveOsm'
 
 async function requireAdmin() {
   const member = await getCurrentMember()
@@ -98,7 +99,7 @@ export async function addMember(adminId: string, data: {
 
   // 3. Create the member record including the generated username.
   const defaultHash = await hashPassword('changeme123')
-  await db.member.create({
+  const member = await db.member.create({
     data: {
       ...data,
       firstName,
@@ -110,6 +111,23 @@ export async function addMember(adminId: string, data: {
       password: defaultHash,
       isActive: true,
       isAdmin: false,
+    }
+  })
+
+  // auto-link to DashboardLive
+  after(async () => {
+    try {
+      const { rows: osmRows } = await fetchMusterData()
+      const match = matchMemberToOsm(member, osmRows)
+      if (!match) return
+      const conflict = await db.member.findFirst({
+        where: { osmId: match.osmId, id: { not: member.id } },
+        select: { id: true },
+      })
+      if (conflict) return
+      await db.member.update({ where: { id: member.id }, data: { osmId: match.osmId } })
+    } catch (e) {
+      console.error('addMember: OSM auto-match failed:', e)
     }
   })
 

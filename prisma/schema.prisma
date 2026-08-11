@@ -19,8 +19,15 @@ model Member {
   email     String? //Made emails optional. Chris seemed apprehensive to make them the key identifier
   phone     String? // optional contact number, editable by the member themselves
 
-  // Links this member to their profile in DashboardLive's OSM system 
+  // Links this member to their profile in DashboardLive's OSM system
   osmId String?
+
+  // Cached aggregate OSM skill/qualification status, refreshed periodically not live
+  // Null until the first refresh runs for this member.
+  osmStatusColor     String? // 'red' | 'yellow' | 'green'
+  osmOverdueCount    Int?
+  osmDueSoonCount    Int?
+  osmStatusCheckedAt DateTime?
 
   //login attributes:
   username          String    @unique

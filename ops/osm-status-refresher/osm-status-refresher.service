@@ -1,0 +1,11 @@
+[Unit]
+Description=RACS2 OSM member skill status refresh (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/osm-status-refresher
+EnvironmentFile=/home/pi/osm-status-refresher/osm-status-refresher.env
+ExecStart=/home/pi/node-v24-runtime/bin/node /home/pi/osm-status-refresher/refresh.js
