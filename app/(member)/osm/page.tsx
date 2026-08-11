@@ -150,7 +150,7 @@ export default async function OsmPage() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 -ml-1" />
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 -ml-1" />
-              skill status (cached, hover a dot for detail)
+              skill status
             </span>
           </div>
 
