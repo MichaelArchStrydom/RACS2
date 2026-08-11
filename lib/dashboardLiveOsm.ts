@@ -64,21 +64,36 @@ function splitRankAndName(fullText: string): { rank: string; name: string } {
 
 const FETCH_TIMEOUT_MS = 20000
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function fetchDashboardLiveHtml(directUrl: string, proxyPath: string): Promise<string> {
   const useProxy = !!OSM_PROXY_URL
   if (useProxy && !OSM_PROXY_SECRET) throw new Error('OSM_PROXY_SECRET is not configured')
 
-  const res = await fetch(useProxy ? `${OSM_PROXY_URL}${proxyPath}` : directUrl, {
-    cache: 'no-store',
-    headers: useProxy
-      ? { 'X-Osm-Proxy-Secret': OSM_PROXY_SECRET! }
-      : { 'User-Agent': 'Mozilla/5.0 (RACS2 OSM mirror)' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!res.ok) {
-    throw new Error(`DashboardLive returned ${res.status} ${res.statusText}`)
+  const url = useProxy ? `${OSM_PROXY_URL}${proxyPath}` : directUrl
+  const headers: Record<string, string> = useProxy
+    ? { 'X-Osm-Proxy-Secret': OSM_PROXY_SECRET! }
+    : { 'User-Agent': 'Mozilla/5.0 (RACS2 OSM mirror)' }
+
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      if (!res.ok) throw new Error(`DashboardLive returned ${res.status} ${res.statusText}`)
+      return await res.text()
+    } catch (e: any) {
+      lastErr = e
+      if (e?.cause?.code !== 'ENOTFOUND' || attempt === 3) throw e
+      await sleep(attempt * 500)
+    }
   }
-  return res.text()
+  throw lastErr
 }
 
 export async function fetchMusterData(): Promise<MusterPageData> {
