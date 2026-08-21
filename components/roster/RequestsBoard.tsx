@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
-import { createStandInRequest, mergeShifts } from '@/app/actions/rosterActions'
+import { createStandInRequest, mergeShifts, createDirectAssignment, claimUnassignedShift, previewClaimRange } from '@/app/actions/rosterActions'
 import { normalizeTimeInput, isMoreThanOneDayPast, formatNZTime } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange } from '@/lib/shiftTime'
 import Spinner from '@/components/Spinner'
@@ -25,6 +25,19 @@ interface MemberOption {
   lastName: string
 }
 
+interface UnassignedSeat {
+  slotId: string
+  applianceRole: string
+  label: string
+}
+
+interface ClaimSeatInfo {
+  dateStr: string
+  applianceName: string
+  applianceRole: string
+  label: string
+}
+
 interface RequestsBoardProps {
   requests: any[]
   activeUserId: string
@@ -34,6 +47,7 @@ interface RequestsBoardProps {
   isModerator?: boolean
   memberOptions?: MemberOption[]
   allShifts?: (UserShift & { ownerId: string })[]
+  unassignedShifts?: UnassignedSeat[]
 }
 
 export default function RequestsBoard({
@@ -43,6 +57,7 @@ export default function RequestsBoard({
   isModerator = false,
   memberOptions = [],
   allShifts = [],
+  unassignedShifts = [],
 }: RequestsBoardProps) {
   const router = useRouter()
   const [showCovered, setShowCovered] = useState(false)
@@ -53,7 +68,7 @@ export default function RequestsBoard({
   const [resolvedShiftRange, setResolvedShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
-  const { pendingShiftAssignmentId, pendingScrollRequestId, clearPendingShift, clearPendingScroll } = useRosterInteraction()
+  const { pendingShiftAssignmentId, pendingScrollRequestId, pendingClaimSeat, clearPendingShift, clearPendingScroll, clearPendingClaim } = useRosterInteraction()
   const createFormRef = useRef<HTMLFormElement>(null)
   const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
@@ -62,6 +77,16 @@ export default function RequestsBoard({
   const [targetMemberId, setTargetMemberId] = useState('')
   const [cancelMode, setCancelMode] = useState(false)
   const [showModTools, setShowModTools] = useState(false)
+
+  const [createShiftMode, setCreateShiftMode] = useState(false)
+  const [selectedSeatKey, setSelectedSeatKey] = useState('')
+  const [isCreatingShift, startCreateShiftTransition] = useTransition()
+  const [createShiftError, setCreateShiftError] = useState<string | null>(null)
+
+  const [claimSeatInfo, setClaimSeatInfo] = useState<ClaimSeatInfo | null>(null)
+  const [claimPreviewRange, setClaimPreviewRange] = useState<{ start: Date; end: Date } | null>(null)
+  const [isClaiming, startClaimTransition] = useTransition()
+  const [claimError, setClaimError] = useState<string | null>(null)
 
   const filteredRequests = requests.filter(req => showCovered || req.status === 'PENDING')
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
@@ -113,6 +138,12 @@ export default function RequestsBoard({
     setCoverEnd('')
     setResolvedShiftRange(null)
     setCreateError(null)
+    setCreateShiftMode(false)
+    setSelectedSeatKey('')
+    setCreateShiftError(null)
+    setClaimSeatInfo(null)
+    setClaimPreviewRange(null)
+    setClaimError(null)
   }
 
   const resolveAndPrefill = (shift: UserShift) => {
@@ -168,6 +199,21 @@ export default function RequestsBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingShiftAssignmentId, userShifts, clearPendingShift])
 
+  useEffect(() => {
+    if (!pendingClaimSeat) return
+    setShowCreateForm(true)
+    setOnBehalfMode(false)
+    setCreateShiftMode(false)
+    setClaimSeatInfo(pendingClaimSeat)
+    setClaimPreviewRange(null)
+    setClaimError(null)
+    previewClaimRange(pendingClaimSeat.dateStr, pendingClaimSeat.applianceName)
+      .then(({ start, end }) => setClaimPreviewRange({ start, end }))
+      .catch(() => setClaimError('Could not load this shift\'s hours — try again.'))
+    setScrollToFormTrigger(n => n + 1)
+    clearPendingClaim()
+  }, [pendingClaimSeat, clearPendingClaim])
+
   // Only fires when the trigger above actually bumps (i.e. only for the
   // mobile-tap flow) — not on every render, and not when a shift is simply
   // picked from the dropdown during a manually-opened form.
@@ -200,6 +246,41 @@ export default function RequestsBoard({
         resetCreateState()
       } catch {
         setCreateError('Something went wrong posting this request — please try again.')
+        router.refresh()
+      }
+    })
+  }
+
+  const handleCreateShiftSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!targetMemberId || !selectedSeatKey) return
+    setCreateShiftError(null)
+
+    const [slotId, applianceRole] = selectedSeatKey.split('::')
+
+    startCreateShiftTransition(async () => {
+      try {
+        await createDirectAssignment(targetMemberId, slotId, applianceRole)
+        resetCreateState()
+      } catch {
+        setCreateShiftError('Something went wrong creating this shift — please try again.')
+        router.refresh()
+      }
+    })
+  }
+
+  const handleClaimSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!claimSeatInfo) return
+    setClaimError(null)
+
+    startClaimTransition(async () => {
+      try {
+        await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole)
+        resetCreateState()
+      } catch {
+        setClaimError('Something went wrong claiming this shift — please try again.')
         router.refresh()
       }
     })
@@ -296,6 +377,19 @@ export default function RequestsBoard({
           <button
             type="button"
             onClick={() => {
+              if (showCreateForm && createShiftMode) { resetCreateState() } else {
+                resetCreateState()
+                setShowCreateForm(true)
+                setCreateShiftMode(true)
+              }
+            }}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
+          >
+            {showCreateForm && createShiftMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Create Shift'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               resetCreateState()
               setCancelMode(true)
             }}
@@ -307,7 +401,7 @@ export default function RequestsBoard({
       )}
 
       {/* Create-request inline form (self or on-behalf) */}
-      {showCreateForm && !cancelMode && (
+      {showCreateForm && !cancelMode && !createShiftMode && !claimSeatInfo && (
         <form
           ref={createFormRef}
           onSubmit={handleCreateSubmit}
@@ -430,6 +524,106 @@ export default function RequestsBoard({
                 : "This shift is more than a day in the past — only an admin can post this now."}
             </p>
           )}
+        </form>
+      )}
+
+      {/* Create-shift inline form mod/admin only*/}
+      {showCreateForm && createShiftMode && !cancelMode && !claimSeatInfo && (
+        <form
+          onSubmit={handleCreateShiftSubmit}
+          className="border rounded-lg p-4 flex flex-col gap-3 bg-amber-50 border-amber-200"
+        >
+          <p className="text-xs font-semibold text-amber-700">
+            Assign a member directly to an unfilled seat
+          </p>
+
+          {createShiftError && (
+            <p className="text-[11px] font-semibold text-rose-600">{createShiftError}</p>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              placeholder="Search member by name…"
+              className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            <select
+              value={targetMemberId}
+              onChange={e => {
+                setTargetMemberId(e.target.value)
+                setSelectedSeatKey('')
+              }}
+              required
+              className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            >
+              <option value="">— choose a member —</option>
+              {matchingMembers.map(m => (
+                <option key={m.id} value={m.id}>{m.lastName}, {m.firstName}</option>
+              ))}
+            </select>
+          </div>
+
+          {targetMemberId && (
+            <select
+              value={selectedSeatKey}
+              onChange={e => setSelectedSeatKey(e.target.value)}
+              required
+              className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            >
+              <option value="">
+                {unassignedShifts.length === 0 ? '— no unfilled seats this period —' : '— choose an unfilled seat —'}
+              </option>
+              {unassignedShifts.map(s => (
+                <option key={`${s.slotId}::${s.applianceRole}`} value={`${s.slotId}::${s.applianceRole}`}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {selectedSeatKey && (
+            <button
+              type="submit"
+              disabled={isCreatingShift}
+              className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+            >
+              {isCreatingShift && <Spinner className="w-3.5 h-3.5" />}
+              {isCreatingShift ? 'Assigning…' : 'Create Shift'}
+            </button>
+          )}
+        </form>
+      )}
+
+      {/* Self-claim dialog */}
+      {showCreateForm && claimSeatInfo && !cancelMode && (
+        <form
+          ref={createFormRef}
+          onSubmit={handleClaimSubmit}
+          className="border rounded-lg p-4 flex flex-col gap-3 bg-emerald-50 border-emerald-200"
+        >
+          <p className="text-xs font-semibold text-emerald-700">Claim this unfilled shift</p>
+
+          {claimError && (
+            <p className="text-[11px] font-semibold text-rose-600">{claimError}</p>
+          )}
+
+          <p className="text-sm font-semibold text-slate-800">{claimSeatInfo.label}</p>
+          <p className="text-xs text-slate-500">
+            {claimPreviewRange
+              ? `${formatNZTime(claimPreviewRange.start)}–${formatNZTime(claimPreviewRange.end)}`
+              : 'Loading shift hours…'}
+          </p>
+
+          <button
+            type="submit"
+            disabled={isClaiming || !claimPreviewRange}
+            className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+          >
+            {isClaiming && <Spinner className="w-3.5 h-3.5" />}
+            {isClaiming ? 'Claiming…' : 'Claim Shift'}
+          </button>
         </form>
       )}
 

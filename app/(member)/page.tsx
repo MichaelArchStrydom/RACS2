@@ -11,8 +11,12 @@ import AnnouncementsPreview from '@/components/announcements/AnnouncementsPrevie
 import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
 import { RosterInteractionProvider } from '@/components/roster/RosterInteractionContext'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { APPLIANCE_ROLES } from '@/lib/roster-engine'
 
 type OsmStatusColor = 'red' | 'yellow' | 'green'
+
+// TODO: Make this variable adjustable in user settings
+const rosterVisibleDays = 8
 
 interface PageProps {
   searchParams: Promise<{ date?: string }>
@@ -34,14 +38,14 @@ export default async function HomePage({ searchParams }: PageProps) {
   // addDaysToDateString, which is pure UTC-anchored calendar arithmetic —
   // immune to server/browser timezone and DST. Only at the DB-query boundary
   // do we convert a date string to a real instant, via nzMidnightUTC.
-  const visibleDateStrs = Array.from({ length: 7 }, (_, i) => addDaysToDateString(baseDateStr, i));
+  const visibleDateStrs = Array.from({ length: rosterVisibleDays }, (_, i) => addDaysToDateString(baseDateStr, i));
   const visibleDates: Date[] = visibleDateStrs.map(nzMidnightUTC);
 
   const startDate = nzMidnightUTC(visibleDateStrs[0]);
-  const endDate = nzMidnightUTC(addDaysToDateString(visibleDateStrs[6], 1)); // exclusive upper bound
+  const endDate = nzMidnightUTC(addDaysToDateString(visibleDateStrs[visibleDateStrs.length - 1], 1)); // exclusive upper bound
 
-  const prevLink = `/?date=${addDaysToDateString(baseDateStr, -7)}`;
-  const nextLink = `/?date=${addDaysToDateString(baseDateStr, 7)}`;
+  const prevLink = `/?date=${addDaysToDateString(baseDateStr, -rosterVisibleDays)}`;
+  const nextLink = `/?date=${addDaysToDateString(baseDateStr, rosterVisibleDays)}`;
 
   //Simultaneous execusion optimised for vercels slow performance
   const [activeSlots, standInRequests, activeAppliances, allAnnouncements] = await Promise.all([
@@ -74,7 +78,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     db.appliance.findMany({
       where: { isActive: true },
       orderBy: { displayOrder: 'asc' },
-      select: { name: true, seats: true }
+      select: { name: true, seats: true, allowSelfClaim: true }
     }),
     db.announcement.findMany({
       where: { isActive: true },
@@ -88,10 +92,10 @@ export default async function HomePage({ searchParams }: PageProps) {
   // the member is linked and the first refresh has run for them.
   const myOsmStatus = currentMember.osmStatusColor
     ? {
-        color: currentMember.osmStatusColor as OsmStatusColor,
-        overdueCount: currentMember.osmOverdueCount ?? 0,
-        dueSoonCount: currentMember.osmDueSoonCount ?? 0,
-      }
+      color: currentMember.osmStatusColor as OsmStatusColor,
+      overdueCount: currentMember.osmOverdueCount ?? 0,
+      dueSoonCount: currentMember.osmDueSoonCount ?? 0,
+    }
     : null
 
   const groupedData: Record<string, any[]> = {};
@@ -107,7 +111,8 @@ export default async function HomePage({ searchParams }: PageProps) {
     seats: {
       label: string;
       abbr: string
-    }[]
+    }[];
+    allowSelfClaim: boolean;
   }[]
     = activeAppliances as
     {
@@ -115,7 +120,8 @@ export default async function HomePage({ searchParams }: PageProps) {
       seats: {
         label: string;
         abbr: string
-      }[]
+      }[];
+      allowSelfClaim: boolean;
     }[];
 
   // Build a dropdown list of shifts the active user can put up for cover:
@@ -192,6 +198,20 @@ export default async function HomePage({ searchParams }: PageProps) {
     )
     : undefined;
 
+  const unassignedShifts = viewerIsMod
+    ? activeSlots.flatMap((slot) => {
+      const filledRoles = new Set(slot.assignments.map((a: any) => a.applianceRole));
+      const slotDateStr = new Date(slot.date).toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+      return APPLIANCE_ROLES
+        .filter((role) => !filledRoles.has(role))
+        .map((role) => ({
+          slotId: slot.id,
+          applianceRole: role,
+          label: `${slotDateStr} · ${slot.appliance} · ${role}`,
+        }));
+    })
+    : undefined;
+
   const osmBadgeColors: Record<OsmStatusColor, string> = {
     red: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100',
     yellow: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
@@ -238,18 +258,18 @@ export default async function HomePage({ searchParams }: PageProps) {
                 href={prevLink}
                 className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               >
-                <ChevronLeft className="w-3.5 h-3.5" /> 7 Days
+                <ChevronLeft className="w-3.5 h-3.5" /> {rosterVisibleDays} Days
               </Link>
 
               <span className="text-xs text-slate-400 font-mono font-medium px-2 sm:inline">
-                {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[6].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
+                {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[visibleDates.length - 1].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
 
               <Link
                 href={nextLink}
                 className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
               >
-                7 Days <ChevronRight className="w-3.5 h-3.5" />
+                {rosterVisibleDays} Days <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
             <RosterGrid
@@ -267,6 +287,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             isModerator={viewerIsMod}
             memberOptions={memberOptions}
             allShifts={allShifts}
+            unassignedShifts={unassignedShifts}
           />
         </RosterInteractionProvider>
 

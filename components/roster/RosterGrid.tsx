@@ -2,18 +2,20 @@
 
 import { Fragment } from 'react'
 import RosterCell from './RosterCell'
+import { useRosterInteraction } from './RosterInteractionContext'
 
 interface RosterGridProps {
   groupedData: Record<string, any[]>;
   visibleDates: Date[];
   activeUserId: string;
-  appliances: { name: string; seats: { label: string; abbr: string }[] }[];
+  appliances: { name: string; seats: { label: string; abbr: string }[]; allowSelfClaim: boolean }[];
 }
 
 export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
+  const { claimSeat } = useRosterInteraction()
 
   // TODO: Make roles a dynamic object array instead of hardcoded for variations in appliances.
-  // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what. 
+  // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what.
 
   const days = visibleDates.map((date) => {
     const dateKey = date.toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
@@ -22,6 +24,9 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
     const isWeekend = [0, 6].includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay());
     return { date, dateKey, dayStr, isWeekend };
   });
+
+  const visibleDaysCount = visibleDates.length + 1
+
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
@@ -41,7 +46,7 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
             <Fragment key={appliance.name}>
               {/* SECTION SUB-HEADER ROW */}
               <tr className="bg-slate-100/80 border-y border-slate-200">
-                <td colSpan={8} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 align-middle">
+                <td colSpan={visibleDaysCount} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 align-middle">
                   {appliance.name}
                 </td>
               </tr>
@@ -56,13 +61,16 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                         <span className="text-[9px] block h-3"></span>
                       </div>
                     </td>
-                    {days.map(({ dateKey }) => {
+                    {days.map(({ dateKey, dayStr }) => {
                       const daySlots = groupedData[dateKey] || [];
                       const matchingSlot = daySlots.find(s => s.appliance === appliance.name);
 
                       // Collect all assignment timeline segments for this seat
                       const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === seat.label) || [];
                       const slotRequests = matchingSlot?.requests || [];
+
+                      // Claimable whenever this appliance has self-claim turned on
+                      const isClaimable = appliance.allowSelfClaim;
 
                       return (
                         <td key={dateKey} className="p-1 border-r align-top ">
@@ -72,6 +80,18 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                               slotRequests={slotRequests}
                               activeUserId={activeUserId}
                             />
+                          ) : isClaimable ? (
+                            <div
+                              onClick={() => claimSeat({
+                                dateStr: dateKey,
+                                applianceName: appliance.name,
+                                applianceRole: seat.label,
+                                label: `${dayStr} · ${appliance.name} · ${seat.label}`,
+                              })}
+                              className="text-center py-2 text-rose-400 italic text-[10px] cursor-pointer hover:text-rose-600 hover:underline"
+                            >
+                              No Assignment — tap to claim
+                            </div>
                           ) : (
                             <div className="text-center py-2 text-slate-300 italic text-[10px]">No Assignment</div>
                           )}

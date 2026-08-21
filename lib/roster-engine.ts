@@ -10,17 +10,41 @@ export function isWeekendDate(dateStr: string): boolean {
   return weekday === 0 || weekday === 6
 }
 
-// Shift start/end for a given NZ calendar date: weekends run 07:00-07:00,
-// weekdays run 17:30-07:00 (always ending 07:00 NZ the next calendar day).
+export interface ApplianceShiftHours {
+  weekdayShiftStart: string
+  weekdayShiftEnd: string
+  weekendShiftStart: string
+  weekendShiftEnd: string
+}
 
-export function getShiftTimesForDate(dateStr: string, isWeekend: boolean): { shiftStart: Date; shiftEnd: Date } {
+// Matches Appliance's schema defaults, the hours every appliance used
+// before shift hours became configurable per-appliance.
+export const DEFAULT_SHIFT_HOURS: ApplianceShiftHours = {
+  weekdayShiftStart: '17:30',
+  weekdayShiftEnd: '07:00',
+  weekendShiftStart: '07:00',
+  weekendShiftEnd: '07:00',
+}
+
+// Shift start/end 
+export function getShiftTimesForDate(
+  dateStr: string,
+  isWeekend: boolean,
+  hours: ApplianceShiftHours = DEFAULT_SHIFT_HOURS
+): { shiftStart: Date; shiftEnd: Date } {
+  const [startStr, endStr] = isWeekend
+    ? [hours.weekendShiftStart, hours.weekendShiftEnd]
+    : [hours.weekdayShiftStart, hours.weekdayShiftEnd]
+  const [sh, sm] = startStr.split(':').map(Number)
+  const [eh, em] = endStr.split(':').map(Number)
+
   const currentDay = nzMidnightUTC(dateStr)
-  const shiftStart = isWeekend
-    ? setNZHours(currentDay, 7, 0)
-    : setNZHours(currentDay, 17, 30)
+  const shiftStart = setNZHours(currentDay, sh, sm)
 
-  const nextDayStr = addDaysToDateString(dateStr, 1)
-  const shiftEnd = setNZHours(nzMidnightUTC(nextDayStr), 7, 0)
+  let shiftEnd = setNZHours(currentDay, eh, em)
+  if (shiftEnd.getTime() <= shiftStart.getTime()) {
+    shiftEnd = setNZHours(nzMidnightUTC(addDaysToDateString(dateStr, 1)), eh, em)
+  }
 
   return { shiftStart, shiftEnd }
 }
@@ -63,6 +87,12 @@ export async function getMonthlyRosteredHours(memberId: string, memberCrewId: st
   if (memberCrewIndex === -1) return 0
   const crew = crews[memberCrewIndex]
 
+  // Projected (not generated) days need to know which appliance's hours
+  const [firstDue, secondDue] = await Promise.all([
+    db.appliance.findUnique({ where: { name: '1st Due' } }),
+    db.appliance.findUnique({ where: { name: '2nd Due' } }),
+  ])
+
   const [y, m] = monthStr.split('-').map(Number)
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const monthStartStr = `${monthStr}-01`
@@ -97,12 +127,16 @@ export async function getMonthlyRosteredHours(memberId: string, memberCrewId: st
 
     const lineup = buildSeatLineup(crew)
     if (lineup.some(seat => seat.member.id === memberId)) {
-      totalHours += isWeekendDate(dateStr) ? 24 : 13.5
+      const appliance = memberCrewIndex === assignedCrewIndex ? firstDue : secondDue
+      const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekendDate(dateStr), appliance ?? undefined)
+      totalHours += (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60)
     }
   }
 
   return totalHours
 }
+
+export const APPLIANCE_ROLES = ['OIC', 'Driver', 'FF1', 'FF2', 'FF3'] as const
 
 // Fills OIC/Driver/FF1-3 seats from a crew's members. OIC and Driver are
 // qualification-gated with no fallback — better an empty seat than someone
@@ -194,6 +228,10 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
 
   if (crews.length === 0) throw new Error("No crews found in the database. Please seed first.")
 
+  // Each appliance's own configured hours — fetched once outside the
+  const appliances = await db.appliance.findMany()
+  const applianceHoursByName = new Map(appliances.map(a => [a.name, a]))
+
   // Wrapped in a transaction: a crash partway through a large bulk
   // generation (e.g. 90+ days) previously could leave some days with a
   // ShiftSlot but zero/partial ShiftAssignment rows (an OIC-less truck),
@@ -218,7 +256,6 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
       const backupCrew = backupCrewIndex !== null ? crews[backupCrewIndex] : null
 
       const isWeekend = isWeekendDate(dateStr)
-      const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend)
 
       // Helper function to pull the right people for the seats
       const assignTruckLineup = async (crew: any, applianceName: string) => {
@@ -231,6 +268,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
           }
         })
 
+        const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend, applianceHoursByName.get(applianceName))
         await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
       }
 

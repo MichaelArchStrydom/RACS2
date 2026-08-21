@@ -179,6 +179,18 @@ model Appliance {
   // can never drift out of sync the way seatLabels/seatAbbr just did for Tanker.
   seats        Json    @default("[{\"label\":\"OIC\",\"abbr\":\"OIC\"},{\"label\":\"Driver\",\"abbr\":\"Dvr\"},{\"label\":\"FF1\",\"abbr\":\"FF1\"},{\"label\":\"FF2\",\"abbr\":\"FF2\"},{\"label\":\"FF3\",\"abbr\":\"FF3\"}]")
   notes        String?
+
+  // Shift hours roster generation uses for this appliance
+  weekdayShiftStart String @default("17:30")
+  weekdayShiftEnd   String @default("07:00")
+  weekendShiftStart String @default("07:00")
+  weekendShiftEnd   String @default("07:00")
+
+  // Lets any member claim one of this appliance's unfilled seats themselves,
+  // full-shift only (no partial ranges), straight from the roster grid —
+  // separate from the moderator "Create Shift" tool, which works regardless
+  // of this flag and can target any appliance/member.
+  allowSelfClaim Boolean @default(false)
 }
 
 //  SHIFT SLOT 
@@ -208,6 +220,7 @@ model ShiftSlot {
   assignments ShiftAssignment[]
   requests    StandInRequest[]
 
+  @@unique([date, appliance, status]) // prevents duplicate self claims
   @@index([date])
   @@index([status])
 }

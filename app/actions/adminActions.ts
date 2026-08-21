@@ -308,6 +308,24 @@ export async function moveMemberToCrew(adminId: string, memberId: string, crewId
 
 //  APPLIANCES 
 
+const TIME_STR_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
+function assertValidShiftTimes(data: {
+  weekdayShiftStart?: string
+  weekdayShiftEnd?: string
+  weekendShiftStart?: string
+  weekendShiftEnd?: string
+}) {
+  // Explicit keys only data is often the full update/create payload (name, seats, etc. included)
+  const fields = ['weekdayShiftStart', 'weekdayShiftEnd', 'weekendShiftStart', 'weekendShiftEnd'] as const
+  for (const key of fields) {
+    const value = data[key]
+    if (value !== undefined && !TIME_STR_RE.test(value)) {
+      throw new Error(`${key} must be a valid 24-hour time (e.g. 17:30).`)
+    }
+  }
+}
+
 export async function updateAppliance(adminId: string, applianceId: string, data: {
   name?: string
   displayOrder?: number
@@ -316,11 +334,17 @@ export async function updateAppliance(adminId: string, applianceId: string, data
   isActive?: boolean
   notes?: string
   seats?: { label: string; abbr: string }[]
+  weekdayShiftStart?: string
+  weekdayShiftEnd?: string
+  weekendShiftStart?: string
+  weekendShiftEnd?: string
+  allowSelfClaim?: boolean
 }) {
   await requireAdmin()
   const name = data.name !== undefined ? sanitizeText(data.name) : undefined
   if (name === '') throw new Error('Appliance name cannot be empty.')
   const notes = data.notes !== undefined ? sanitizeLongText(data.notes) : undefined
+  assertValidShiftTimes(data)
   await db.appliance.update({ where: { id: applianceId }, data: { ...data, name, notes } })
   revalidatePath('/admin/appliances')
 }
@@ -331,10 +355,16 @@ export async function addAppliance(adminId: string, data: {
   seatCount: number
   minimumCrew: number
   seats: { label: string; abbr: string }[]
+  weekdayShiftStart?: string
+  weekdayShiftEnd?: string
+  weekendShiftStart?: string
+  weekendShiftEnd?: string
+  allowSelfClaim?: boolean
 }) {
   await requireAdmin()
   const name = sanitizeText(data.name)
   if (!name) throw new Error('Appliance name is required.')
+  assertValidShiftTimes(data)
   await db.appliance.create({ data: { ...data, name, isActive: true } })
   revalidatePath('/admin/appliances')
 }

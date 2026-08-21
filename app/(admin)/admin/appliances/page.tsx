@@ -64,6 +64,11 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                 seatCount: labels.length,
                 minimumCrew: Number(fd.get('minimumCrew')),
                 seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
+                weekdayShiftStart: fd.get('weekdayShiftStart') as string,
+                weekdayShiftEnd: fd.get('weekdayShiftEnd') as string,
+                weekendShiftStart: fd.get('weekendShiftStart') as string,
+                weekendShiftEnd: fd.get('weekendShiftEnd') as string,
+                allowSelfClaim: fd.get('allowSelfClaim') === 'on',
               })
               redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance added')}`)
             } catch (e: any) {
@@ -90,6 +95,31 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
           <div className="flex flex-col gap-1 col-span-2">
             <SeatManager initialSeats={defaultSeats} />
           </div>
+          <div className="col-span-2 grid grid-cols-2 gap-3 pt-2 border-t">
+            <p className="text-xs font-semibold text-slate-500 col-span-2">
+              Shift hours used by roster generation for this appliance (only affects future generations)
+            </p>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-slate-500">Weekday Start</label>
+              <input name="weekdayShiftStart" type="time" lang="en-GB" defaultValue="17:30" required className="border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-slate-500">Weekday End</label>
+              <input name="weekdayShiftEnd" type="time" lang="en-GB" defaultValue="07:00" required className="border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-slate-500">Weekend Start</label>
+              <input name="weekendShiftStart" type="time" lang="en-GB" defaultValue="07:00" required className="border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-slate-500">Weekend End</label>
+              <input name="weekendShiftEnd" type="time" lang="en-GB" defaultValue="07:00" required className="border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600 col-span-2">
+              <input type="checkbox" name="allowSelfClaim" className="rounded" />
+              Allow members to self-claim unfilled seats on this appliance
+            </label>
+          </div>
           <div className="flex items-end">
             <button type="submit" className="w-full px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold rounded-lg">Submit Appliance</button>
           </div>
@@ -114,6 +144,11 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                     isActive: fd.get('isActive') === 'on',
                     notes: fd.get('notes') as string || undefined,
                     seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
+                    weekdayShiftStart: fd.get('weekdayShiftStart') as string,
+                    weekdayShiftEnd: fd.get('weekdayShiftEnd') as string,
+                    weekendShiftStart: fd.get('weekendShiftStart') as string,
+                    weekendShiftEnd: fd.get('weekendShiftEnd') as string,
+                    allowSelfClaim: fd.get('allowSelfClaim') === 'on',
                   })
                   redirect(`/admin/appliances?user=${fd.get('adminId')}&success=${encodeURIComponent('Appliance updated')}`)
                 } catch (e: any) {
@@ -147,17 +182,44 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                     }))}
                   />
                 </div>
+                <div className="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t">
+                  <p className="text-xs font-semibold text-slate-500 col-span-2 md:col-span-4">
+                    Shift hours used by roster generation for this appliance (only affects future generations)
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-500">Weekday Start</label>
+                    <input name="weekdayShiftStart" type="time" lang="en-GB" defaultValue={a.weekdayShiftStart} required className="border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-500">Weekday End</label>
+                    <input name="weekdayShiftEnd" type="time" lang="en-GB" defaultValue={a.weekdayShiftEnd} required className="border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-500">Weekend Start</label>
+                    <input name="weekendShiftStart" type="time" lang="en-GB" defaultValue={a.weekendShiftStart} required className="border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-500">Weekend End</label>
+                    <input name="weekendShiftEnd" type="time" lang="en-GB" defaultValue={a.weekendShiftEnd} required className="border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                </div>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold text-slate-500">Notes</label>
                   <input name="notes" defaultValue={a.notes ?? ''} placeholder="Optional notes" className="border rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 text-sm text-slate-600">
-                  <input type="checkbox" name="isActive" defaultChecked={a.isActive} className="rounded" />
-                  Active (visible in roster)
-                </label>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" name="isActive" defaultChecked={a.isActive} className="rounded" />
+                    Active (visible in roster)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" name="allowSelfClaim" defaultChecked={a.allowSelfClaim} className="rounded" />
+                    Allow self-claim
+                  </label>
+                </div>
                 <button type="submit" className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg">Save</button>
               </div>
             </form>

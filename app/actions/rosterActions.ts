@@ -2,11 +2,12 @@
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { isMoreThanOneDayPast, formatNZTime } from '@/lib/timezone'
+import { isMoreThanOneDayPast, formatNZTime, nzMidnightUTC } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange, TIME_RANGE_INVALID_MESSAGE } from '@/lib/shiftTime'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { getCurrentMember } from '@/lib/auth'
 import { sendPushToMember, sendPushToMembers } from '@/lib/push'
+import { getShiftTimesForDate, isWeekendDate } from '@/lib/roster-engine'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -77,6 +78,119 @@ export async function createStandInRequest(
       body: `${dateStr} · ${assignment.slot.appliance} · ${formatNZTime(start)}–${formatNZTime(end)}`,
       url: '/',
     })
+  })
+
+  revalidatePath('/')
+}
+
+async function resolveShiftTimes(dateStr: string, applianceName: string) {
+  const currentDay = nzMidnightUTC(dateStr)
+  const slot = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+  if (slot) {
+    const sibling = await db.shiftAssignment.findFirst({ where: { slotId: slot.id } })
+    if (sibling) return { shiftStart: sibling.startTime, shiftEnd: sibling.endTime }
+  }
+
+  const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
+  return getShiftTimesForDate(dateStr, isWeekendDate(dateStr), appliance ?? undefined)
+}
+
+async function findOrCreateSlot(dateStr: string, applianceName: string) {
+  const currentDay = nzMidnightUTC(dateStr)
+
+  const cancelled = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'CANCELLED' } })
+  if (cancelled) throw new Error('This shift has been cancelled.')
+
+  const existing = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+  if (existing) return existing
+
+  try {
+    return await db.shiftSlot.create({
+      data: {
+        date: currentDay,
+        appliance: applianceName,
+        roleRequired: 'Full Crew',
+        isWeekend: isWeekendDate(dateStr),
+      },
+    })
+  } catch (e: any) {
+    if (e.code === 'P2002') {
+      const raced = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+      if (raced) return raced
+    }
+    throw e
+  }
+}
+
+export async function createDirectAssignment(
+  memberId: string,
+  slotId: string,
+  applianceRole: string
+) {
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+  if (!caller.isAdmin && !caller.isModerator) throw new Error('Moderator access required')
+
+  const slot = await db.shiftSlot.findUnique({ where: { id: slotId } })
+  if (!slot) throw new Error('Shift not found')
+  if (slot.status === 'CANCELLED') throw new Error('This shift has been cancelled.')
+
+  const existing = await db.shiftAssignment.findFirst({ where: { slotId, applianceRole } })
+  if (existing) throw new Error('That seat has already been filled.')
+
+  const member = await db.member.findUnique({ where: { id: memberId }, include: { crew: true } })
+  if (!member) throw new Error('Member not found')
+
+  const dateStr = new Date(slot.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' })
+  const { shiftStart, shiftEnd } = await resolveShiftTimes(dateStr, slot.appliance)
+
+  await db.shiftAssignment.create({
+    data: {
+      slotId,
+      applianceRole,
+      memberId,
+      startTime: shiftStart,
+      endTime: shiftEnd,
+      historicalRank: member.rank,
+      historicalWatchName: member.crew?.watchName ?? null,
+    },
+  })
+
+  revalidatePath('/')
+}
+
+export async function previewClaimRange(dateStr: string, applianceName: string) {
+  const { shiftStart, shiftEnd } = await resolveShiftTimes(dateStr, applianceName)
+  return { start: shiftStart, end: shiftEnd }
+}
+
+export async function claimUnassignedShift(dateStr: string, applianceName: string, applianceRole: string) {
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+
+  const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
+  if (!appliance?.allowSelfClaim) throw new Error('Self-claiming shifts is not enabled for this appliance.')
+
+  const slot = await findOrCreateSlot(dateStr, applianceName)
+
+  const existing = await db.shiftAssignment.findFirst({ where: { slotId: slot.id, applianceRole } })
+  if (existing) throw new Error('That seat has already been filled.')
+
+  const member = await db.member.findUnique({ where: { id: caller.id }, include: { crew: true } })
+  if (!member) throw new Error('Member not found')
+
+  const { shiftStart, shiftEnd } = await resolveShiftTimes(dateStr, applianceName)
+
+  await db.shiftAssignment.create({
+    data: {
+      slotId: slot.id,
+      applianceRole,
+      memberId: caller.id,
+      startTime: shiftStart,
+      endTime: shiftEnd,
+      historicalRank: member.rank,
+      historicalWatchName: member.crew?.watchName ?? null,
+    },
   })
 
   revalidatePath('/')
