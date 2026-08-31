@@ -179,16 +179,6 @@ export default function RequestsBoard({
     }
   }
 
-  // Mobile tap on your own uncovered cell (RosterCell) sets this — open the
-  // create form pre-selected to that exact shift. The actual scroll is
-  // handled by a SEPARATE effect below, keyed off scrollToFormTrigger —
-  // setShowCreateForm(true) here only *schedules* a re-render, it doesn't put
-  // the form in the DOM synchronously, so the form's ref is still null at
-  // this point. A single requestAnimationFrame isn't reliably after React's
-  // commit either (it's not React-aware), which is why the first tap looked
-  // like it did nothing. A second effect that depends on the trigger value
-  // is guaranteed to run after React has committed the form to the DOM —
-  // React always commits before running effects for that render.
   useEffect(() => {
     if (!pendingShiftAssignmentId) return
     const shift = userShifts.find(s => s.assignmentId === pendingShiftAssignmentId)
@@ -262,8 +252,8 @@ export default function RequestsBoard({
       try {
         await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate)
         resetCreateState()
-      } catch {
-        setCreateError('Something went wrong posting this request — please try again.')
+      } catch (err) {
+        setCreateError(err instanceof Error ? err.message : 'Something went wrong posting this request — please try again.')
         router.refresh()
       }
     })
@@ -281,8 +271,8 @@ export default function RequestsBoard({
       try {
         await createDirectAssignment(targetMemberId, slotId, applianceRole)
         resetCreateState()
-      } catch {
-        setCreateShiftError('Something went wrong creating this shift — please try again.')
+      } catch (err) {
+        setCreateShiftError(err instanceof Error ? err.message : 'Something went wrong creating this shift — please try again.')
         router.refresh()
       }
     })
@@ -297,8 +287,8 @@ export default function RequestsBoard({
       try {
         await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole, claimSeatInfo.rangeStartStr, claimSeatInfo.rangeEndStr)
         resetCreateState()
-      } catch {
-        setClaimError('Something went wrong claiming this shift — please try again.')
+      } catch (err) {
+        setClaimError(err instanceof Error ? err.message : 'Something went wrong claiming this shift — please try again.')
         router.refresh()
       }
     })

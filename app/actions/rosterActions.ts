@@ -55,6 +55,19 @@ export async function createStandInRequest(
     throw new Error(TIME_RANGE_INVALID_MESSAGE)
   }
 
+  const overlappingPending = await db.standInRequest.findFirst({
+    where: {
+      slotId: assignment.slotId,
+      requestedById,
+      status: 'PENDING',
+      startTime: { lt: end },
+      endTime: { gt: start },
+    },
+  })
+  if (overlappingPending) {
+    throw new Error('There is already a pending cover request overlapping this time range.')
+  }
+
   await db.standInRequest.create({
     data: {
       slotId: assignment.slotId,
@@ -415,6 +428,43 @@ export async function acceptStandInRequest(
       }
     })
     if (claim.count === 0) throw new Error(ALREADY_ACTIONED)
+
+    const overlappingSiblings = await tx.standInRequest.findMany({
+      where: {
+        slotId: request.slotId,
+        requestedById: request.requestedById,
+        status: 'PENDING',
+        id: { not: requestId },
+        startTime: { lt: coverEnd },
+        endTime: { gt: coverStart },
+      },
+    })
+    for (const sibling of overlappingSiblings) {
+      const sibStart = new Date(sibling.startTime)
+      const sibEnd = new Date(sibling.endTime)
+      if (sibStart.getTime() < coverStart.getTime()) {
+        await tx.standInRequest.create({
+          data: {
+            slotId: sibling.slotId, requestedById: sibling.requestedById,
+            startTime: sibStart, endTime: coverStart,
+            status: 'PENDING', requestType: sibling.requestType, createdById: sibling.createdById,
+          }
+        })
+      }
+      if (coverEnd.getTime() < sibEnd.getTime()) {
+        await tx.standInRequest.create({
+          data: {
+            slotId: sibling.slotId, requestedById: sibling.requestedById,
+            startTime: coverEnd, endTime: sibEnd,
+            status: 'PENDING', requestType: sibling.requestType, createdById: sibling.createdById,
+          }
+        })
+      }
+      await tx.standInRequest.update({
+        where: { id: sibling.id },
+        data: { status: 'CANCELLED', cancelledById: caller.id },
+      })
+    }
 
     //Hour ledger
     if (coveringMemberId !== request.requestedById) {
