@@ -306,6 +306,35 @@ export async function moveMemberToCrew(adminId: string, memberId: string, crewId
   revalidatePath('/admin/members')
 }
 
+export async function setCrewSeatPositions(
+  adminId: string,
+  crewId: string,
+  positions: { memberId: string; seatPosition: number }[]
+) {
+  await requireAdmin()
+
+  // Deliberately NOT filtered to isActive members. 
+  // an inactive member can still hold a stale seatPosition only exclude them from future gens
+  const crewMembers = await db.member.findMany({ where: { crewId }, select: { id: true } })
+  const validIds = new Set(crewMembers.map((m) => m.id))
+  if (!positions.every((p) => validIds.has(p.memberId))) {
+    throw new Error('One of these members is not in this crew.')
+  }
+  if (positions.some((p) => !Number.isInteger(p.seatPosition) || p.seatPosition < 0 || p.seatPosition > 4)) {
+    throw new Error('Seat position out of range.')
+  }
+  if (new Set(positions.map((p) => p.seatPosition)).size !== positions.length) {
+    throw new Error('Each seat can only hold one member.')
+  }
+
+  await db.$transaction([
+    ...crewMembers.map((m) => db.member.update({ where: { id: m.id }, data: { seatPosition: null } })),
+    ...positions.map((p) => db.member.update({ where: { id: p.memberId }, data: { seatPosition: p.seatPosition } })),
+  ])
+
+  revalidatePath('/admin/crews')
+}
+
 //  APPLIANCES 
 
 const TIME_STR_RE = /^([01]\d|2[0-3]):[0-5]\d$/

@@ -1,53 +1,10 @@
 import { db } from './db'
 import type { Prisma } from '@prisma/client'
-import { setNZHours, nzMidnightUTC, addDaysToDateString } from './timezone'
+import { nzMidnightUTC, addDaysToDateString } from './timezone'
 
-// Whether a given NZ calendar date falls on a weekend, derived purely from
-// the date string itself (UTC-anchored) — independent of server timezone.
-export function isWeekendDate(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-  return weekday === 0 || weekday === 6
-}
-
-export interface ApplianceShiftHours {
-  weekdayShiftStart: string
-  weekdayShiftEnd: string
-  weekendShiftStart: string
-  weekendShiftEnd: string
-}
-
-// Matches Appliance's schema defaults, the hours every appliance used
-// before shift hours became configurable per-appliance.
-export const DEFAULT_SHIFT_HOURS: ApplianceShiftHours = {
-  weekdayShiftStart: '17:30',
-  weekdayShiftEnd: '07:00',
-  weekendShiftStart: '07:00',
-  weekendShiftEnd: '07:00',
-}
-
-// Shift start/end 
-export function getShiftTimesForDate(
-  dateStr: string,
-  isWeekend: boolean,
-  hours: ApplianceShiftHours = DEFAULT_SHIFT_HOURS
-): { shiftStart: Date; shiftEnd: Date } {
-  const [startStr, endStr] = isWeekend
-    ? [hours.weekendShiftStart, hours.weekendShiftEnd]
-    : [hours.weekdayShiftStart, hours.weekdayShiftEnd]
-  const [sh, sm] = startStr.split(':').map(Number)
-  const [eh, em] = endStr.split(':').map(Number)
-
-  const currentDay = nzMidnightUTC(dateStr)
-  const shiftStart = setNZHours(currentDay, sh, sm)
-
-  let shiftEnd = setNZHours(currentDay, eh, em)
-  if (shiftEnd.getTime() <= shiftStart.getTime()) {
-    shiftEnd = setNZHours(nzMidnightUTC(addDaysToDateString(dateStr, 1)), eh, em)
-  }
-
-  return { shiftStart, shiftEnd }
-}
+export { isWeekendDate, getShiftTimesForDate, DEFAULT_SHIFT_HOURS } from './shiftHours'
+export type { ApplianceShiftHours } from './shiftHours'
+import { isWeekendDate, getShiftTimesForDate } from './shiftHours'
 
 export function getCrewIndicesForDay(dayIndex: number, crewCount: number): { assignedCrewIndex: number; backupCrewIndex: number | null } {
   const assignedCrewIndex = Math.abs(dayIndex % crewCount)
@@ -138,47 +95,52 @@ export async function getMonthlyRosteredHours(memberId: string, memberCrewId: st
 
 export const APPLIANCE_ROLES = ['OIC', 'Driver', 'FF1', 'FF2', 'FF3'] as const
 
-// Fills OIC/Driver/FF1-3 seats from a crew's members. OIC and Driver are
-// qualification-gated with no fallback — better an empty seat than someone
-// unqualified put in charge or behind the wheel. Recruits (rank RCFF) are
-// reserved for FF3 only, never OIC/Driver/FF1/FF2, so if FF3 is already taken
-// by another recruit, any extra recruit simply doesn't get seated that day
-// rather than sliding into a seat they shouldn't hold.
-//
-// This gating is deliberately scoped to roster GENERATION only (this
-// function and its two callers below). Cover-request acceptance
-// intentionally stays unrestricted anyone can pick up
-// any shift, with admins/mods as the manual backstop if quals are wrong.
-export function buildSeatLineup(crew: any): { role: string; member: any }[] {
-  let availableMembers = [...crew.members]
+function fillRemainingSeats(openRoles: readonly string[], pool: any[]): { role: string; member: any }[] {
+  const available = [...pool]
   const extract = (condition: (m: any) => boolean) => {
-    const index = availableMembers.findIndex(condition)
-    if (index !== -1) return availableMembers.splice(index, 1)[0]
+    const index = available.findIndex(condition)
+    if (index !== -1) return available.splice(index, 1)[0]
     return null
   }
 
   const isRecruit = (m: any) => m.rank === 'RCFF'
-
   const isOfficerQualified = (m: any) => !isRecruit(m) && m.qualifications.some((mq: any) => mq.qualification?.key === 'SO_QUALIFIED')
   const isDriverQualified = (m: any) => !isRecruit(m) && m.qualifications.some((mq: any) => mq.qualification?.key === 'PUMP_OP')
 
-  const oic = extract(isOfficerQualified)
-  const driver = extract(isDriverQualified)
-  // Pull a recruit out of the pool now so FF1/FF2 can't claim them ahead of
-  // FF3 but hold them aside rather than seating them immediately, so a
-  // crew with no recruit still fills FF1 then FF2 in order before FF3.
-  const reservedRecruit = extract(isRecruit)
-  const ff1 = extract(m => !isRecruit(m))
-  const ff2 = extract(m => !isRecruit(m))
-  const ff3 = reservedRecruit || extract(() => true)
+  const reservedRecruit = openRoles.includes('FF3') ? extract(isRecruit) : null
 
-  return [
-    { role: 'OIC', member: oic },
-    { role: 'Driver', member: driver },
-    { role: 'FF1', member: ff1 },
-    { role: 'FF2', member: ff2 },
-    { role: 'FF3', member: ff3 }
-  ].filter(item => item.member !== null)
+  const result: { role: string; member: any }[] = []
+  for (const role of openRoles) {
+    let member: any = null
+    if (role === 'OIC') member = extract(isOfficerQualified)
+    else if (role === 'Driver') member = extract(isDriverQualified)
+    else if (role === 'FF1') member = extract((m) => !isRecruit(m))
+    else if (role === 'FF2') member = extract((m) => !isRecruit(m))
+    else if (role === 'FF3') member = reservedRecruit ?? extract(() => true)
+    if (member) result.push({ role, member })
+  }
+  return result
+}
+
+export function buildSeatLineup(crew: any): { role: string; member: any }[] {
+  const lineup: { role: string; member: any }[] = []
+  const filledRoles = new Set<string>()
+
+  for (let i = 0; i < APPLIANCE_ROLES.length; i++) {
+    const member = crew.members.find((m: any) => m.seatPosition === i)
+    if (member) {
+      lineup.push({ role: APPLIANCE_ROLES[i], member })
+      filledRoles.add(APPLIANCE_ROLES[i])
+    }
+  }
+
+  const openRoles = APPLIANCE_ROLES.filter((r) => !filledRoles.has(r))
+  const bench = crew.members.filter((m: any) => m.seatPosition == null)
+  const fallback = fillRemainingSeats(openRoles, bench)
+
+  return [...lineup, ...fallback].sort(
+    (a, b) => APPLIANCE_ROLES.indexOf(a.role as any) - APPLIANCE_ROLES.indexOf(b.role as any)
+  )
 }
 
 // Creates one ShiftAssignment per filled seat for a crew on an existing slot.

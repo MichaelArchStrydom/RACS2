@@ -1,18 +1,27 @@
 'use client'
 
-import { Fragment } from 'react'
+import { Fragment, useEffect } from 'react'
 import RosterCell from './RosterCell'
-import { useRosterInteraction } from './RosterInteractionContext'
+import EditableRosterCell from './EditableRosterCell'
+import { useRosterInteraction, cellKeyStr, type DraftAssignment } from './RosterInteractionContext'
+import { getShiftTimesForDate, type ApplianceShiftHours } from '@/lib/shiftHours'
+
+interface ApplianceForGrid extends ApplianceShiftHours {
+  name: string
+  seats: { label: string; abbr: string }[]
+  allowSelfClaim: boolean
+}
 
 interface RosterGridProps {
   groupedData: Record<string, any[]>;
   visibleDates: Date[];
   activeUserId: string;
-  appliances: { name: string; seats: { label: string; abbr: string }[]; allowSelfClaim: boolean }[];
+  appliances: ApplianceForGrid[];
+  isModerator?: boolean;
 }
 
-export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances }: RosterGridProps) {
-  const { claimSeat } = useRosterInteraction()
+export default function RosterGrid({ groupedData, visibleDates, activeUserId, appliances, isModerator = false }: RosterGridProps) {
+  const { claimSeat, openEditPanel, isEditMode, editDraft, dirtyKeys, initEditDraft } = useRosterInteraction()
 
   // TODO: Make roles a dynamic object array instead of hardcoded for variations in appliances.
   // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what.
@@ -27,10 +36,37 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
 
   const visibleDaysCount = visibleDates.length + 1
 
+  const editModeActive = isEditMode && isModerator
 
+  useEffect(() => {
+    if (!editModeActive || editDraft !== null) return
+    const initial: Record<string, DraftAssignment[]> = {}
+    for (const { dateKey } of days) {
+      const daySlots = groupedData[dateKey] || []
+      for (const appliance of appliances) {
+        const matchingSlot = daySlots.find((s) => s.appliance === appliance.name)
+        for (const seat of appliance.seats as { label: string; abbr: string }[]) {
+          const key = cellKeyStr({ dateStr: dateKey, applianceName: appliance.name, applianceRole: seat.label })
+          const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === seat.label) || []
+          initial[key] = roleAssignments.map((a: any) => ({
+            id: a.id,
+            memberId: a.memberId,
+            member: a.member ?? null,
+            actualMemberId: a.actualMemberId ?? null,
+            actualMember: a.actualMember ?? null,
+            startTime: new Date(a.startTime),
+            endTime: new Date(a.endTime),
+          }))
+        }
+      }
+    }
+    initEditDraft(initial)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editModeActive, editDraft])
+  //TODO: fixed the ugly desktop space on roster table :)
   return (
-    <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
-      <table className="border-collapse">
+    <div className={`rounded-xl shadow-sm border overflow-x-auto transition-colors ${editModeActive ? 'bg-rose-50/40 border-rose-200' : 'bg-white'}`}>
+      <table className="border-collapse w-full">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
             <th className="p-3 text-left border-r whitespace-nowrap"></th>
@@ -58,39 +94,60 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
                     <td className="p-2 border-r font-medium text-slate-700 bg-slate-50/30 text-[11px]">
                       <div className="flex flex-col">
                         <span className="text-slate-700 font-semibold">{seat.abbr}</span>
-                        <span className="text-[9px] block h-3"></span>
+                        <span className="text-[9px] block "></span>
                       </div>
                     </td>
-                    {days.map(({ dateKey, dayStr }) => {
+                    {days.map(({ dateKey, dayStr, isWeekend }) => {
                       const daySlots = groupedData[dateKey] || [];
                       const matchingSlot = daySlots.find(s => s.appliance === appliance.name);
+                      const cellKey = cellKeyStr({ dateStr: dateKey, applianceName: appliance.name, applianceRole: seat.label })
 
-                      // Collect all assignment timeline segments for this seat
-                      const roleAssignments = matchingSlot?.assignments.filter((a: any) => a.applianceRole === seat.label) || [];
+                      const roleAssignments = editModeActive && editDraft
+                        ? (editDraft[cellKey] ?? [])
+                        : (matchingSlot?.assignments.filter((a: any) => a.applianceRole === seat.label) || []);
                       const slotRequests = matchingSlot?.requests || [];
+                      const isDirty = editModeActive && dirtyKeys.has(cellKey)
 
-                      // Claimable whenever this appliance has self-claim turned on
                       const isClaimable = appliance.allowSelfClaim;
 
+                      const { shiftStart, shiftEnd } = getShiftTimesForDate(dateKey, isWeekend, appliance)
+
+                      const cellProps = {
+                        assignments: roleAssignments,
+                        slotRequests,
+                        activeUserId,
+                        shiftBounds: { start: shiftStart, end: shiftEnd },
+                        dateStr: dateKey,
+                        applianceName: appliance.name,
+                        applianceRole: seat.label,
+                        cellLabel: `${dayStr} · ${appliance.name} · ${seat.label}`,
+                      }
+
                       return (
-                        <td key={dateKey} className="p-1 border-r align-top ">
-                          {roleAssignments.length > 0 ? (
-                            <RosterCell
-                              assignments={roleAssignments}
-                              slotRequests={slotRequests}
-                              activeUserId={activeUserId}
-                            />
+                        <td
+                          key={dateKey}
+                          className={`p-1 border-r align-top transition-colors ${isDirty ? 'bg-yellow-100' : ''}`}
+                          data-date-key={dateKey}
+                          data-appliance={appliance.name}
+                          data-role={seat.label}
+                          data-shift-start={shiftStart.toISOString()}
+                          data-shift-end={shiftEnd.toISOString()}
+                        >
+                          {editModeActive ? (
+                            <EditableRosterCell {...cellProps} />
+                          ) : roleAssignments.length > 0 ? (
+                            <RosterCell {...cellProps} />
                           ) : isClaimable ? (
                             <div
                               onClick={() => claimSeat({
                                 dateStr: dateKey,
                                 applianceName: appliance.name,
                                 applianceRole: seat.label,
-                                label: `${dayStr} · ${appliance.name} · ${seat.label}`,
+                                label: cellProps.cellLabel,
                               })}
                               className="text-center py-2 text-rose-400 italic text-[10px] cursor-pointer hover:text-rose-600 hover:underline"
                             >
-                              No Assignment — tap to claim
+                              Tap to claim
                             </div>
                           ) : (
                             <div className="text-center py-2 text-slate-300 italic text-[10px]">No Assignment</div>

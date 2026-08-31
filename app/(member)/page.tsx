@@ -10,6 +10,7 @@ import { AnnouncementsProvider } from '@/components/announcements/AnnouncementsC
 import AnnouncementsPreview from '@/components/announcements/AnnouncementsPreview'
 import AnnouncementsPanel from '@/components/announcements/AnnouncementsPanel'
 import { RosterInteractionProvider } from '@/components/roster/RosterInteractionContext'
+import EditModeToggleButton from '@/components/roster/EditModeToggleButton'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { APPLIANCE_ROLES } from '@/lib/roster-engine'
 
@@ -78,7 +79,11 @@ export default async function HomePage({ searchParams }: PageProps) {
     db.appliance.findMany({
       where: { isActive: true },
       orderBy: { displayOrder: 'asc' },
-      select: { name: true, seats: true, allowSelfClaim: true }
+      select: {
+        name: true, seats: true, allowSelfClaim: true,
+        weekdayShiftStart: true, weekdayShiftEnd: true,
+        weekendShiftStart: true, weekendShiftEnd: true,
+      }
     }),
     db.announcement.findMany({
       where: { isActive: true },
@@ -106,23 +111,16 @@ export default async function HomePage({ searchParams }: PageProps) {
     groupedData[dateKey].push(slot);
   });
 
-  const appliancesArray: {
+  interface ApplianceForGrid {
     name: string;
-    seats: {
-      label: string;
-      abbr: string
-    }[];
+    seats: { label: string; abbr: string }[];
     allowSelfClaim: boolean;
-  }[]
-    = activeAppliances as
-    {
-      name: string;
-      seats: {
-        label: string;
-        abbr: string
-      }[];
-      allowSelfClaim: boolean;
-    }[];
+    weekdayShiftStart: string;
+    weekdayShiftEnd: string;
+    weekendShiftStart: string;
+    weekendShiftEnd: string;
+  }
+  const appliancesArray: ApplianceForGrid[] = activeAppliances as unknown as ApplianceForGrid[];
 
   // Build a dropdown list of shifts the active user can put up for cover:
   // either their own original assignment (not yet covered), or one they're
@@ -265,18 +263,22 @@ export default async function HomePage({ searchParams }: PageProps) {
                 {visibleDates[0].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short' })} - {visibleDates[visibleDates.length - 1].toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
 
-              <Link
-                href={nextLink}
-                className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
-              >
-                {rosterVisibleDays} Days <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
+              <div className="flex items-center gap-2">
+                <EditModeToggleButton isModerator={viewerIsMod} />
+                <Link
+                  href={nextLink}
+                  className="min-w-21.2 text-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs font-semibold text-slate-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  {rosterVisibleDays} Days <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
             <RosterGrid
               groupedData={groupedData}
               visibleDates={visibleDates}
               activeUserId={activeUserId}
               appliances={appliancesArray}
+              isModerator={viewerIsMod}
             />
           </section>
 

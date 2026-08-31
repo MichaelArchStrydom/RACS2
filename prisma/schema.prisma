@@ -42,6 +42,9 @@ model Member {
 
   rank String // CFO, DCFO, SSO, SO, SFF, QFF, FF, OSSO, OSQFF, RCFF
 
+  // Explicit seat slot within this member's crew for automatic roster
+  seatPosition Int?
+
   // qualification booleans kept for backward compat
   // DONE REMOVED FROM ROSTER ENGINE BUT LEFT IN SCHEMA FOR NOW
   isDriver  Boolean @default(false)
@@ -95,6 +98,8 @@ model Member {
 
   announcementReceipts AnnouncementReceipt[]
   pushSubscriptions    PushSubscription[]
+
+  @@unique([crewId, seatPosition])
 }
 
 //SESSION
@@ -201,32 +206,38 @@ model ShiftSlot {
   roleRequired String
   isWeekend    Boolean  @default(false)
 
-  // NEW: status lets the roster engine generate DRAFT slots that are invisible
-  // to regular users until an admin publishes them.
-  // LIVE    = visible to everyone, the authoritative roster
-  // DRAFT   = only visible to admins in preview mode
-  // CANCELLED = shift was cancelled (e.g. appliance out of service)
   status String @default("LIVE")
 
-  // NEW: links a draft slot back to the change set that created it.
-  // Null for all live slots.
   draftChangeSetId String?
   draftChangeSet   RosterChangeSet? @relation(fields: [draftChangeSetId], references: [id])
 
-  // NEW: if this date falls on a public holiday, store the reference.
   publicHolidayId String?
   publicHoliday   PublicHoliday? @relation(fields: [publicHolidayId], references: [id])
 
-  assignments ShiftAssignment[]
-  requests    StandInRequest[]
+  assignments    ShiftAssignment[]
+  requests       StandInRequest[]
+  // shiftHistories ShiftHistory[] // TEMP: commented out for a main-Neon push that must not include the in-progress ShiftHistory feature — restore after.
 
   @@unique([date, appliance, status]) // prevents duplicate self claims
   @@index([date])
   @@index([status])
 }
 
+// ShiftHistory is a record of whats happened to a shift, who did it and why
+// TEMP: commented out for a main-Neon push that must not include this in-progress feature — restore after.
+// model ShiftHistory {
+//   id      String   @id @default(uuid())
+//   date    DateTime @default(now())
+//   // message is where members can write justifications as to why they put up the shift.
+//   // claimers or initial generations dont need a message, maybe a "claimed" or "generated" but idk if that matters.
+//   // didnt want to put message in StandInRequest, bc I thought a organised record table would be cleaner?
+//   message String?
+//
+//   slotId String
+//   slot   ShiftSlot @relation(fields: [slotId], references: [id])
+// }
+
 //  SHIFT ASSIGNMENT
-// Unchanged structurally — the app works with this as-is.
 model ShiftAssignment {
   id     String    @id @default(uuid())
   slotId String
@@ -252,7 +263,6 @@ model ShiftAssignment {
 }
 
 //  STAND-IN REQUEST 
-// Unchanged structurally.
 model StandInRequest {
   id     String    @id @default(uuid())
   slotId String

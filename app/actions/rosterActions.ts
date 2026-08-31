@@ -1,5 +1,6 @@
 'use server'
 import { db } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { isMoreThanOneDayPast, formatNZTime, nzMidnightUTC } from '@/lib/timezone'
@@ -8,6 +9,7 @@ import { ALREADY_ACTIONED } from '@/lib/errors'
 import { getCurrentMember } from '@/lib/auth'
 import { sendPushToMember, sendPushToMembers } from '@/lib/push'
 import { getShiftTimesForDate, isWeekendDate } from '@/lib/roster-engine'
+import { snapToHalfHour } from '@/lib/timeSnap'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -83,29 +85,29 @@ export async function createStandInRequest(
   revalidatePath('/')
 }
 
-async function resolveShiftTimes(dateStr: string, applianceName: string) {
+async function resolveShiftTimes(dateStr: string, applianceName: string, client: Prisma.TransactionClient = db) {
   const currentDay = nzMidnightUTC(dateStr)
-  const slot = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+  const slot = await client.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
   if (slot) {
-    const sibling = await db.shiftAssignment.findFirst({ where: { slotId: slot.id } })
+    const sibling = await client.shiftAssignment.findFirst({ where: { slotId: slot.id } })
     if (sibling) return { shiftStart: sibling.startTime, shiftEnd: sibling.endTime }
   }
 
-  const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
+  const appliance = await client.appliance.findUnique({ where: { name: applianceName } })
   return getShiftTimesForDate(dateStr, isWeekendDate(dateStr), appliance ?? undefined)
 }
 
-async function findOrCreateSlot(dateStr: string, applianceName: string) {
+async function findOrCreateSlot(dateStr: string, applianceName: string, client: Prisma.TransactionClient = db) {
   const currentDay = nzMidnightUTC(dateStr)
 
-  const cancelled = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'CANCELLED' } })
+  const cancelled = await client.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'CANCELLED' } })
   if (cancelled) throw new Error('This shift has been cancelled.')
 
-  const existing = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+  const existing = await client.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
   if (existing) return existing
 
   try {
-    return await db.shiftSlot.create({
+    return await client.shiftSlot.create({
       data: {
         date: currentDay,
         appliance: applianceName,
@@ -115,17 +117,52 @@ async function findOrCreateSlot(dateStr: string, applianceName: string) {
     })
   } catch (e: any) {
     if (e.code === 'P2002') {
-      const raced = await db.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
+      const raced = await client.shiftSlot.findFirst({ where: { date: currentDay, appliance: applianceName, status: 'LIVE' } })
       if (raced) return raced
     }
     throw e
   }
 }
 
+async function resolveHistoricalFields(memberId: string, client: Prisma.TransactionClient = db) {
+  const member = await client.member.findUnique({ where: { id: memberId }, include: { crew: true } })
+  if (!member) throw new Error('Member not found')
+  return { historicalRank: member.rank, historicalWatchName: member.crew?.watchName ?? null }
+}
+
+async function resolveRangeAndCheckOverlap(
+  fullStart: Date,
+  fullEnd: Date,
+  slotId: string,
+  applianceRole: string,
+  rangeStartStr: string | undefined,
+  rangeEndStr: string | undefined,
+  client: Prisma.TransactionClient = db
+) {
+  let start = fullStart
+  let end = fullEnd
+  if (rangeStartStr && rangeEndStr) {
+    const parsed = parseTimeRangeOnDay(fullStart, rangeStartStr, rangeEndStr)
+    if (!parsed) throw new Error('Invalid time input')
+    start = snapToHalfHour(parsed.start)
+    end = snapToHalfHour(parsed.end)
+    if (!isWithinRange(start, end, fullStart, fullEnd)) throw new Error(TIME_RANGE_INVALID_MESSAGE)
+  }
+
+  const overlap = await client.shiftAssignment.findFirst({
+    where: { slotId, applianceRole, startTime: { lt: end }, endTime: { gt: start } },
+  })
+  if (overlap) throw new Error('That range overlaps an existing assignment.')
+
+  return { start, end }
+}
+
 export async function createDirectAssignment(
   memberId: string,
   slotId: string,
-  applianceRole: string
+  applianceRole: string,
+  rangeStartStr?: string,
+  rangeEndStr?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -135,25 +172,14 @@ export async function createDirectAssignment(
   if (!slot) throw new Error('Shift not found')
   if (slot.status === 'CANCELLED') throw new Error('This shift has been cancelled.')
 
-  const existing = await db.shiftAssignment.findFirst({ where: { slotId, applianceRole } })
-  if (existing) throw new Error('That seat has already been filled.')
-
-  const member = await db.member.findUnique({ where: { id: memberId }, include: { crew: true } })
-  if (!member) throw new Error('Member not found')
-
   const dateStr = new Date(slot.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' })
   const { shiftStart, shiftEnd } = await resolveShiftTimes(dateStr, slot.appliance)
+  const { start, end } = await resolveRangeAndCheckOverlap(shiftStart, shiftEnd, slotId, applianceRole, rangeStartStr, rangeEndStr)
+
+  const { historicalRank, historicalWatchName } = await resolveHistoricalFields(memberId)
 
   await db.shiftAssignment.create({
-    data: {
-      slotId,
-      applianceRole,
-      memberId,
-      startTime: shiftStart,
-      endTime: shiftEnd,
-      historicalRank: member.rank,
-      historicalWatchName: member.crew?.watchName ?? null,
-    },
+    data: { slotId, applianceRole, memberId, startTime: start, endTime: end, historicalRank, historicalWatchName },
   })
 
   revalidatePath('/')
@@ -164,33 +190,94 @@ export async function previewClaimRange(dateStr: string, applianceName: string) 
   return { start: shiftStart, end: shiftEnd }
 }
 
-export async function claimUnassignedShift(dateStr: string, applianceName: string, applianceRole: string) {
+export async function claimUnassignedShift(
+  dateStr: string,
+  applianceName: string,
+  applianceRole: string,
+  rangeStartStr?: string,
+  rangeEndStr?: string
+) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
 
-  const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
-  if (!appliance?.allowSelfClaim) throw new Error('Self-claiming shifts is not enabled for this appliance.')
+  const existingSlot = await db.shiftSlot.findFirst({
+    where: { date: nzMidnightUTC(dateStr), appliance: applianceName, status: 'LIVE' },
+  })
+  const roleAlreadyAssigned = existingSlot
+    ? await db.shiftAssignment.findFirst({ where: { slotId: existingSlot.id, applianceRole } })
+    : null
+  if (!roleAlreadyAssigned) {
+    const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
+    if (!appliance?.allowSelfClaim) throw new Error('Self-claiming shifts is not enabled for this appliance.')
+  }
 
   const slot = await findOrCreateSlot(dateStr, applianceName)
-
-  const existing = await db.shiftAssignment.findFirst({ where: { slotId: slot.id, applianceRole } })
-  if (existing) throw new Error('That seat has already been filled.')
-
-  const member = await db.member.findUnique({ where: { id: caller.id }, include: { crew: true } })
-  if (!member) throw new Error('Member not found')
-
   const { shiftStart, shiftEnd } = await resolveShiftTimes(dateStr, applianceName)
+  const { start, end } = await resolveRangeAndCheckOverlap(shiftStart, shiftEnd, slot.id, applianceRole, rangeStartStr, rangeEndStr)
+
+  const { historicalRank, historicalWatchName } = await resolveHistoricalFields(caller.id)
 
   await db.shiftAssignment.create({
-    data: {
-      slotId: slot.id,
-      applianceRole,
-      memberId: caller.id,
-      startTime: shiftStart,
-      endTime: shiftEnd,
-      historicalRank: member.rank,
-      historicalWatchName: member.crew?.watchName ?? null,
-    },
+    data: { slotId: slot.id, applianceRole, memberId: caller.id, startTime: start, endTime: end, historicalRank, historicalWatchName },
+  })
+
+  revalidatePath('/')
+}
+
+export async function saveEditedTimeline(
+  dateStr: string,
+  applianceName: string,
+  applianceRole: string,
+  segments: { memberId: string | null; startStr: string; endStr: string }[]
+) {
+  const caller = await getCurrentMember()
+  if (!caller) throw new Error('Not signed in')
+  if (!caller.isAdmin && !caller.isModerator) throw new Error('Moderator access required')
+
+  await db.$transaction(async (tx) => {
+    const slot = await findOrCreateSlot(dateStr, applianceName, tx)
+    const { shiftStart: boundsStart, shiftEnd: boundsEnd } = await resolveShiftTimes(dateStr, applianceName, tx)
+
+    const parsed = segments
+      .filter((s): s is { memberId: string; startStr: string; endStr: string } => !!s.memberId)
+      .map(s => {
+        const range = parseTimeRangeOnDay(boundsStart, s.startStr, s.endStr)
+        if (!range) throw new Error('Invalid time input')
+        const start = snapToHalfHour(range.start)
+        const end = snapToHalfHour(range.end)
+        if (!isWithinRange(start, end, boundsStart, boundsEnd)) throw new Error(TIME_RANGE_INVALID_MESSAGE)
+        return { memberId: s.memberId, start, end }
+      })
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+
+    for (let i = 1; i < parsed.length; i++) {
+      if (parsed[i].start.getTime() < parsed[i - 1].end.getTime()) {
+        throw new Error('Segments overlap — adjust the times before saving.')
+      }
+    }
+
+    const priorAssignments = await tx.shiftAssignment.findMany({ where: { slotId: slot.id, applianceRole } })
+
+    await tx.shiftAssignment.deleteMany({ where: { slotId: slot.id, applianceRole } })
+
+    for (const seg of parsed) {
+      const { historicalRank, historicalWatchName } = await resolveHistoricalFields(seg.memberId, tx)
+      await tx.shiftAssignment.create({
+        data: { slotId: slot.id, applianceRole, memberId: seg.memberId, startTime: seg.start, endTime: seg.end, historicalRank, historicalWatchName },
+      })
+    }
+
+    // Auto-cancel pending requests belonging to a prior owner who no longer has any overlapping segment in the saved timeline.
+    const priorOwnerIds = new Set(
+      priorAssignments.flatMap(a => [a.memberId, a.actualMemberId]).filter((id): id is string => !!id)
+    )
+    for (const ownerId of priorOwnerIds) {
+      if (parsed.some(s => s.memberId === ownerId)) continue
+      await tx.standInRequest.updateMany({
+        where: { slotId: slot.id, requestedById: ownerId, status: 'PENDING' },
+        data: { status: 'CANCELLED', cancelledById: caller.id },
+      })
+    }
   })
 
   revalidatePath('/')

@@ -4,10 +4,11 @@ import { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import StandInRequestItem from '@/components/roster/StandInRequestItem'
 import { createStandInRequest, mergeShifts, createDirectAssignment, claimUnassignedShift, previewClaimRange } from '@/app/actions/rosterActions'
-import { normalizeTimeInput, isMoreThanOneDayPast, formatNZTime } from '@/lib/timezone'
+import { normalizeTimeInput, isMoreThanOneDayPast, formatNZTime, nzMidnightUTC, setNZHours, addDaysToDateString } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange } from '@/lib/shiftTime'
 import Spinner from '@/components/Spinner'
 import { useRosterInteraction } from '@/components/roster/RosterInteractionContext'
+import SeatTimelineEditor from '@/components/roster/SeatTimelineEditor'
 import { Check, X, Shield, ChevronUp, ChevronDown } from 'lucide-react'
 
 interface UserShift {
@@ -36,6 +37,9 @@ interface ClaimSeatInfo {
   applianceName: string
   applianceRole: string
   label: string
+  // Present when claiming a specific mid day gap rather than the whole default shift range.
+  rangeStartStr?: string
+  rangeEndStr?: string
 }
 
 interface RequestsBoardProps {
@@ -68,7 +72,7 @@ export default function RequestsBoard({
   const [resolvedShiftRange, setResolvedShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
-  const { pendingShiftAssignmentId, pendingScrollRequestId, pendingClaimSeat, clearPendingShift, clearPendingScroll, clearPendingClaim } = useRosterInteraction()
+  const { pendingShiftAssignmentId, pendingScrollRequestId, pendingClaimSeat, pendingEditSeat, clearPendingShift, clearPendingScroll, clearPendingClaim, clearPendingEditSeat } = useRosterInteraction()
   const createFormRef = useRef<HTMLFormElement>(null)
   const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
@@ -205,11 +209,25 @@ export default function RequestsBoard({
     setOnBehalfMode(false)
     setCreateShiftMode(false)
     setClaimSeatInfo(pendingClaimSeat)
-    setClaimPreviewRange(null)
     setClaimError(null)
-    previewClaimRange(pendingClaimSeat.dateStr, pendingClaimSeat.applianceName)
-      .then(({ start, end }) => setClaimPreviewRange({ start, end }))
-      .catch(() => setClaimError('Could not load this shift\'s hours — try again.'))
+
+    if (pendingClaimSeat.rangeStartStr && pendingClaimSeat.rangeEndStr) {
+      const anchor = nzMidnightUTC(pendingClaimSeat.dateStr)
+      const [sh, sm] = pendingClaimSeat.rangeStartStr.split(':').map(Number)
+      const [eh, em] = pendingClaimSeat.rangeEndStr.split(':').map(Number)
+      const start = setNZHours(anchor, sh, sm)
+      const end = setNZHours(anchor, eh, em)
+      const rolledEnd = end.getTime() <= start.getTime()
+        ? setNZHours(nzMidnightUTC(addDaysToDateString(pendingClaimSeat.dateStr, 1)), eh, em)
+        : end
+      setClaimPreviewRange({ start, end: rolledEnd })
+    } else {
+      setClaimPreviewRange(null)
+      previewClaimRange(pendingClaimSeat.dateStr, pendingClaimSeat.applianceName)
+        .then(({ start, end }) => setClaimPreviewRange({ start, end }))
+        .catch(() => setClaimError('Could not load this shift\'s hours — try again.'))
+    }
+
     setScrollToFormTrigger(n => n + 1)
     clearPendingClaim()
   }, [pendingClaimSeat, clearPendingClaim])
@@ -277,7 +295,7 @@ export default function RequestsBoard({
 
     startClaimTransition(async () => {
       try {
-        await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole)
+        await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole, claimSeatInfo.rangeStartStr, claimSeatInfo.rangeEndStr)
         resetCreateState()
       } catch {
         setClaimError('Something went wrong claiming this shift — please try again.')
@@ -287,140 +305,251 @@ export default function RequestsBoard({
   }
 
   return (
-    <section className={`p-5 rounded-xl shadow-sm border space-y-4 transition-colors ${cancelMode ? 'bg-rose-50 border-rose-300' : 'bg-white'}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-base font-semibold text-rose-600 flex items-center gap-2">
-          <span>Active Stand-In Requests</span>
-          {pendingCount > 0 && (
-            <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full text-xs font-bold">
-              {pendingCount} Open
-            </span>
-          )}
-          {cancelMode && (
-            <span className="bg-rose-600 text-white px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide">
-              Cancel Mode
-            </span>
-          )}
-        </h2>
+    <>
+      <section className={`p-5 rounded-xl shadow-sm border space-y-4 transition-colors ${cancelMode ? 'bg-rose-50 border-rose-300' : 'bg-white'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h2 className="text-base font-semibold text-rose-600 flex items-center gap-2">
+            <span>Active Stand-In Requests</span>
+            {pendingCount > 0 && (
+              <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                {pendingCount} Open
+              </span>
+            )}
+            {cancelMode && (
+              <span className="bg-rose-600 text-white px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide">
+                Cancel Mode
+              </span>
+            )}
+          </h2>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {cancelMode ? (
-            /* Cancel mode: everything else disappears — one green exit. */
+          <div className="flex items-center gap-2 flex-wrap">
+            {cancelMode ? (
+              <button
+                type="button"
+                onClick={() => setCancelMode(false)}
+                className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100 transition-colors"
+              >
+                <Check className="w-3.5 h-3.5" /> End Edit Mode
+              </button>
+            ) : (
+              <>
+                {/* New: open the create-request form */}
+                {userShifts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (showCreateForm && !onBehalfMode) { resetCreateState() } else {
+                        resetCreateState()
+                        setShowCreateForm(true)
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
+                  >
+                    {showCreateForm && !onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover'}
+                  </button>
+                )}
+
+                {isModerator && (
+                  <button
+                    type="button"
+                    onClick={() => setShowModTools(v => !v)}
+                    className={`inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showModTools
+                      ? 'bg-amber-100 text-amber-800 border-amber-400'
+                      : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}
+                  >
+                    <Shield className="w-3.5 h-3.5" /> Moderator Controls {showModTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border">
+                  <input
+                    type="checkbox"
+                    checked={showCovered}
+                    onChange={(e) => setShowCovered(e.target.checked)}
+                    className="rounded text-rose-500 focus:ring-rose-500 cursor-pointer"
+                  />
+                  Show Covered Shifts
+                </label>
+              </>
+            )}
+          </div>
+        </div>
+
+        {isModerator && showModTools && !cancelMode && (
+          <div className="flex items-center gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded-lg p-2">
             <button
               type="button"
-              onClick={() => setCancelMode(false)}
-              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100 transition-colors"
+              onClick={() => {
+                if (showCreateForm && onBehalfMode) { resetCreateState() } else {
+                  resetCreateState()
+                  setShowCreateForm(true)
+                  setOnBehalfMode(true)
+                }
+              }}
+              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
             >
-              <Check className="w-3.5 h-3.5" /> End Edit Mode
+              {showCreateForm && onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover on Behalf'}
             </button>
-          ) : (
-            <>
-              {/* New: open the create-request form */}
-              {userShifts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (showCreateForm && !onBehalfMode) { resetCreateState() } else {
-                      resetCreateState()
-                      setShowCreateForm(true)
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 transition-colors"
-                >
-                  {showCreateForm && !onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover'}
-                </button>
-              )}
+            <button
+              type="button"
+              onClick={() => {
+                if (showCreateForm && createShiftMode) { resetCreateState() } else {
+                  resetCreateState()
+                  setShowCreateForm(true)
+                  setCreateShiftMode(true)
+                }
+              }}
+              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
+            >
+              {showCreateForm && createShiftMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Create Shift'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetCreateState()
+                setCancelMode(true)
+              }}
+              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-rose-600 border-rose-300 hover:bg-rose-100 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" /> Cancel Someone's Cover
+            </button>
+          </div>
+        )}
 
-              {isModerator && (
-                <button
-                  type="button"
-                  onClick={() => setShowModTools(v => !v)}
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showModTools
-                    ? 'bg-amber-100 text-amber-800 border-amber-400'
-                    : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}
-                >
-                  <Shield className="w-3.5 h-3.5" /> Moderator Controls {showModTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-              )}
+        {showCreateForm && !cancelMode && !createShiftMode && !claimSeatInfo && (
+          <form
+            ref={createFormRef}
+            onSubmit={handleCreateSubmit}
+            className={`border rounded-lg p-4 flex flex-col gap-3 ${onBehalfMode ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}
+          >
+            {onBehalfMode ? (
+              <p className="text-xs font-semibold text-amber-700">
+                Posting a cover request ON BEHALF of another member
+              </p>
+            ) : (
+              <p className="text-xs font-semibold text-slate-600">Select one of your upcoming shifts and the hours you need covered:</p>
+            )}
 
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border">
+            {createError && (
+              <p className="text-[11px] font-semibold text-rose-600">{createError}</p>
+            )}
+
+            {onBehalfMode && (
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
-                  type="checkbox"
-                  checked={showCovered}
-                  onChange={(e) => setShowCovered(e.target.checked)}
-                  className="rounded text-rose-500 focus:ring-rose-500 cursor-pointer"
+                  type="text"
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                  placeholder="Search member by name…"
+                  className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
-                Show Covered Shifts
-              </label>
-            </>
-          )}
-        </div>
-      </div>
+                <select
+                  value={targetMemberId}
+                  onChange={e => {
+                    setTargetMemberId(e.target.value)
+                    setSelectedShiftId('')
+                    setCoverStart('')
+                    setCoverEnd('')
+                  }}
+                  required
+                  className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                >
+                  <option value="">— choose a member —</option>
+                  {matchingMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.lastName}, {m.firstName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-      {/* Collapsible moderator tools row — keeps the main header compact,
-          especially on mobile. */}
-      {isModerator && showModTools && !cancelMode && (
-        <div className="flex items-center gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded-lg p-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (showCreateForm && onBehalfMode) { resetCreateState() } else {
-                resetCreateState()
-                setShowCreateForm(true)
-                setOnBehalfMode(true)
-              }
-            }}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
-          >
-            {showCreateForm && onBehalfMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Request Cover on Behalf'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (showCreateForm && createShiftMode) { resetCreateState() } else {
-                resetCreateState()
-                setShowCreateForm(true)
-                setCreateShiftMode(true)
-              }
-            }}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-amber-700 border-amber-300 hover:bg-amber-100 transition-colors"
-          >
-            {showCreateForm && createShiftMode ? <><X className="w-3.5 h-3.5" /> Cancel</> : '+ Create Shift'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetCreateState()
-              setCancelMode(true)
-            }}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-rose-600 border-rose-300 hover:bg-rose-100 transition-colors"
-          >
-            <X className="w-3.5 h-3.5" /> Cancel Someone's Cover
-          </button>
-        </div>
-      )}
+            {(!onBehalfMode || targetMemberId) && (
+              <select
+                value={selectedShiftId}
+                onChange={handleShiftSelect}
+                required
+                className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-400"
+              >
+                <option value="">
+                  {shiftPool.length === 0 ? '— no visible shifts for this member —' : '— choose a shift —'}
+                </option>
+                {shiftPool.map(s => (
+                  <option key={s.assignmentId} value={s.assignmentId}>{s.label}</option>
+                ))}
+              </select>
+            )}
 
-      {/* Create-request inline form (self or on-behalf) */}
-      {showCreateForm && !cancelMode && !createShiftMode && !claimSeatInfo && (
-        <form
-          ref={createFormRef}
-          onSubmit={handleCreateSubmit}
-          className={`border rounded-lg p-4 flex flex-col gap-3 ${onBehalfMode ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}
-        >
-          {onBehalfMode ? (
+            {selectedShiftId && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-slate-500">Cover From:</span>
+                  <input
+                    type="text"
+                    value={coverStart}
+                    onChange={e => setCoverStart(e.target.value)}
+                    onBlur={e => setCoverStart(normalizeTimeInput(e.target.value))}
+                    required
+                    className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+                  />
+                  <input
+                    type="time"
+                    value={coverStart}
+                    onChange={e => setCoverStart(e.target.value)}
+                    required
+                    className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-slate-500">Cover Until:</span>
+                  <input
+                    type="text"
+                    value={coverEnd}
+                    onChange={e => setCoverEnd(e.target.value)}
+                    onBlur={e => setCoverEnd(normalizeTimeInput(e.target.value))}
+                    required
+                    className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
+                  />
+                  <input
+                    type="time"
+                    value={coverEnd}
+                    onChange={e => setCoverEnd(e.target.value)}
+                    required
+                    className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isCreating || !!createBlockReason}
+                  title={createBlockReason ?? undefined}
+                  className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+                >
+                  {isCreating && <Spinner className="w-3.5 h-3.5" />}
+                  {isCreating ? 'Posting…' : createBlockReason ?? 'Post Request'}
+                </button>
+              </div>
+            )}
+            {createBlockReason && !isCreating && (
+              <p className="text-[11px] font-semibold text-rose-600">
+                {createBlockReason === 'Time range not possible'
+                  ? "That range falls outside the shift's actual hours — adjust the times above."
+                  : "This shift is more than a day in the past — only an admin can post this now."}
+              </p>
+            )}
+          </form>
+        )}
+
+        {showCreateForm && createShiftMode && !cancelMode && !claimSeatInfo && (
+          <form
+            onSubmit={handleCreateShiftSubmit}
+            className="border rounded-lg p-4 flex flex-col gap-3 bg-amber-50 border-amber-200"
+          >
             <p className="text-xs font-semibold text-amber-700">
-              Posting a cover request ON BEHALF of another member
+              Assign a member directly to an unfilled seat
             </p>
-          ) : (
-            <p className="text-xs font-semibold text-slate-600">Select one of your upcoming shifts and the hours you need covered:</p>
-          )}
 
-          {createError && (
-            <p className="text-[11px] font-semibold text-rose-600">{createError}</p>
-          )}
+            {createShiftError && (
+              <p className="text-[11px] font-semibold text-rose-600">{createShiftError}</p>
+            )}
 
-          {/* On-behalf step 1: pick the member (searchable) */}
-          {onBehalfMode && (
             <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
@@ -433,9 +562,7 @@ export default function RequestsBoard({
                 value={targetMemberId}
                 onChange={e => {
                   setTargetMemberId(e.target.value)
-                  setSelectedShiftId('')
-                  setCoverStart('')
-                  setCoverEnd('')
+                  setSelectedSeatKey('')
                 }}
                 required
                 className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
@@ -446,207 +573,97 @@ export default function RequestsBoard({
                 ))}
               </select>
             </div>
-          )}
 
-          {/* Shift picker — identical for both modes, just a different pool */}
-          {(!onBehalfMode || targetMemberId) && (
-            <select
-              value={selectedShiftId}
-              onChange={handleShiftSelect}
-              required
-              className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-400"
-            >
-              <option value="">
-                {shiftPool.length === 0 ? '— no visible shifts for this member —' : '— choose a shift —'}
-              </option>
-              {shiftPool.map(s => (
-                <option key={s.assignmentId} value={s.assignmentId}>{s.label}</option>
-              ))}
-            </select>
-          )}
+            {targetMemberId && (
+              <select
+                value={selectedSeatKey}
+                onChange={e => setSelectedSeatKey(e.target.value)}
+                required
+                className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              >
+                <option value="">
+                  {unassignedShifts.length === 0 ? '— no unfilled seats this period —' : '— choose an unfilled seat —'}
+                </option>
+                {unassignedShifts.map(s => (
+                  <option key={`${s.slotId}::${s.applianceRole}`} value={`${s.slotId}::${s.applianceRole}`}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            )}
 
-          {selectedShiftId && (
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold text-slate-500">Cover From:</span>
-                {/* Desktop: compact free-text entry. Typing just an hour
-                    ("7" or "17") and blurring auto-formats to "HH:00". */}
-                <input
-                  type="text"
-                  value={coverStart}
-                  onChange={e => setCoverStart(e.target.value)}
-                  onBlur={e => setCoverStart(normalizeTimeInput(e.target.value))}
-                  required
-                  className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
-                />
-                {/* Mobile: native time picker */}
-                <input
-                  type="time"
-                  value={coverStart}
-                  onChange={e => setCoverStart(e.target.value)}
-                  required
-                  className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold text-slate-500">Cover Until:</span>
-                <input
-                  type="text"
-                  value={coverEnd}
-                  onChange={e => setCoverEnd(e.target.value)}
-                  onBlur={e => setCoverEnd(normalizeTimeInput(e.target.value))}
-                  required
-                  className="hidden md:block w-16 bg-white border rounded px-2 py-1 text-center font-mono text-xs"
-                />
-                <input
-                  type="time"
-                  value={coverEnd}
-                  onChange={e => setCoverEnd(e.target.value)}
-                  required
-                  className="md:hidden min-w-[130px] bg-white border rounded px-2 py-2 font-mono text-sm"
-                />
-              </div>
+            {selectedSeatKey && (
               <button
                 type="submit"
-                disabled={isCreating || !!createBlockReason}
-                title={createBlockReason ?? undefined}
-                className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+                disabled={isCreatingShift}
+                className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
               >
-                {isCreating && <Spinner className="w-3.5 h-3.5" />}
-                {isCreating ? 'Posting…' : createBlockReason ?? 'Post Request'}
+                {isCreatingShift && <Spinner className="w-3.5 h-3.5" />}
+                {isCreatingShift ? 'Assigning…' : 'Create Shift'}
               </button>
-            </div>
-          )}
-          {createBlockReason && !isCreating && (
-            <p className="text-[11px] font-semibold text-rose-600">
-              {createBlockReason === 'Time range not possible'
-                ? "That range falls outside the shift's actual hours — adjust the times above."
-                : "This shift is more than a day in the past — only an admin can post this now."}
+            )}
+          </form>
+        )}
+
+        {showCreateForm && claimSeatInfo && !cancelMode && (
+          <form
+            ref={createFormRef}
+            onSubmit={handleClaimSubmit}
+            className="border rounded-lg p-4 flex flex-col gap-3 bg-emerald-50 border-emerald-200"
+          >
+            <p className="text-xs font-semibold text-emerald-700">Claim this unfilled shift</p>
+
+            {claimError && (
+              <p className="text-[11px] font-semibold text-rose-600">{claimError}</p>
+            )}
+
+            <p className="text-sm font-semibold text-slate-800">{claimSeatInfo.label}</p>
+            <p className="text-xs text-slate-500">
+              {claimPreviewRange
+                ? `${formatNZTime(claimPreviewRange.start)}–${formatNZTime(claimPreviewRange.end)}`
+                : 'Loading shift hours…'}
             </p>
-          )}
-        </form>
-      )}
 
-      {/* Create-shift inline form mod/admin only*/}
-      {showCreateForm && createShiftMode && !cancelMode && !claimSeatInfo && (
-        <form
-          onSubmit={handleCreateShiftSubmit}
-          className="border rounded-lg p-4 flex flex-col gap-3 bg-amber-50 border-amber-200"
-        >
-          <p className="text-xs font-semibold text-amber-700">
-            Assign a member directly to an unfilled seat
-          </p>
-
-          {createShiftError && (
-            <p className="text-[11px] font-semibold text-rose-600">{createShiftError}</p>
-          )}
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={memberSearch}
-              onChange={e => setMemberSearch(e.target.value)}
-              placeholder="Search member by name…"
-              className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
-            />
-            <select
-              value={targetMemberId}
-              onChange={e => {
-                setTargetMemberId(e.target.value)
-                setSelectedSeatKey('')
-              }}
-              required
-              className="flex-1 border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
-            >
-              <option value="">— choose a member —</option>
-              {matchingMembers.map(m => (
-                <option key={m.id} value={m.id}>{m.lastName}, {m.firstName}</option>
-              ))}
-            </select>
-          </div>
-
-          {targetMemberId && (
-            <select
-              value={selectedSeatKey}
-              onChange={e => setSelectedSeatKey(e.target.value)}
-              required
-              className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
-            >
-              <option value="">
-                {unassignedShifts.length === 0 ? '— no unfilled seats this period —' : '— choose an unfilled seat —'}
-              </option>
-              {unassignedShifts.map(s => (
-                <option key={`${s.slotId}::${s.applianceRole}`} value={`${s.slotId}::${s.applianceRole}`}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {selectedSeatKey && (
             <button
               type="submit"
-              disabled={isCreatingShift}
-              className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
+              disabled={isClaiming || !claimPreviewRange}
+              className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
             >
-              {isCreatingShift && <Spinner className="w-3.5 h-3.5" />}
-              {isCreatingShift ? 'Assigning…' : 'Create Shift'}
+              {isClaiming && <Spinner className="w-3.5 h-3.5" />}
+              {isClaiming ? 'Claiming…' : 'Claim Shift'}
             </button>
-          )}
-        </form>
-      )}
+          </form>
+        )}
 
-      {/* Self-claim dialog */}
-      {showCreateForm && claimSeatInfo && !cancelMode && (
-        <form
-          ref={createFormRef}
-          onSubmit={handleClaimSubmit}
-          className="border rounded-lg p-4 flex flex-col gap-3 bg-emerald-50 border-emerald-200"
-        >
-          <p className="text-xs font-semibold text-emerald-700">Claim this unfilled shift</p>
-
-          {claimError && (
-            <p className="text-[11px] font-semibold text-rose-600">{claimError}</p>
-          )}
-
-          <p className="text-sm font-semibold text-slate-800">{claimSeatInfo.label}</p>
-          <p className="text-xs text-slate-500">
-            {claimPreviewRange
-              ? `${formatNZTime(claimPreviewRange.start)}–${formatNZTime(claimPreviewRange.end)}`
-              : 'Loading shift hours…'}
+        {filteredRequests.length === 0 ? (
+          <p className="text-xs text-slate-400 italic">
+            {requests.length === 0
+              ? "No active cover or stand-in requests for this period."
+              : "No pending requests. Toggle 'Show Covered Shifts' to view history."}
           </p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-slate-200 divide-y divide-slate-100">
+            {filteredRequests.map((request) => (
+              <div key={request.id} id={`request-${request.id}`}>
+                <StandInRequestItem
+                  request={request}
+                  activeUserId={activeUserId}
+                  cancelMode={cancelMode}
+                  isModerator={isModerator}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-          <button
-            type="submit"
-            disabled={isClaiming || !claimPreviewRange}
-            className="flex items-center justify-center gap-1.5 w-full md:w-auto py-2.5 md:py-1.5 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded shadow-sm transition-colors text-xs"
-          >
-            {isClaiming && <Spinner className="w-3.5 h-3.5" />}
-            {isClaiming ? 'Claiming…' : 'Claim Shift'}
-          </button>
-        </form>
+      {pendingEditSeat && (
+        <SeatTimelineEditor
+          seat={pendingEditSeat}
+          memberOptions={memberOptions}
+          onClose={clearPendingEditSeat}
+        />
       )}
-
-      {filteredRequests.length === 0 ? (
-        <p className="text-xs text-slate-400 italic">
-          {requests.length === 0
-            ? "No active cover or stand-in requests for this period."
-            : "No pending requests. Toggle 'Show Covered Shifts' to view history."}
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 divide-y divide-slate-100">
-          {filteredRequests.map((request) => (
-            <div key={request.id} id={`request-${request.id}`}>
-              <StandInRequestItem
-                request={request}
-                activeUserId={activeUserId}
-                cancelMode={cancelMode}
-                isModerator={isModerator}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    </>
   )
 }

@@ -12,6 +12,21 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* roster edit-mode jiggle (iOS-homescreen-icon-move-mode style) */
+@theme {
+  --animate-jiggle: jiggle 0.12s ease-in-out infinite alternate;
+}
+
+@keyframes jiggle {
+  from {
+    transform: rotate(-1.5deg);
+  }
+
+  to {
+    transform: rotate(1.5deg);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

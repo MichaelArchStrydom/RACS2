@@ -3,6 +3,7 @@
 import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRosterInteraction } from './RosterInteractionContext'
+import { formatNZTime } from '@/lib/timezone'
 
 //FIX: Desktop roster currently not filling the roster div. grouping to the left. looks horrible
 
@@ -10,14 +11,22 @@ interface RosterCellProps {
   assignments: any[];
   slotRequests: any[];
   activeUserId: string;
+  shiftBounds?: { start: Date; end: Date };
+  dateStr?: string;
+  applianceName?: string;
+  applianceRole?: string;
+  cellLabel?: string;
 }
 
-export default function RosterCell({ assignments = [], slotRequests = [], activeUserId }: RosterCellProps) {
+export default function RosterCell({
+  assignments = [], slotRequests = [], activeUserId,
+  shiftBounds, dateStr, applianceName, applianceRole, cellLabel,
+}: RosterCellProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showTimePicker, setShowTimePicker] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const { requestCoverFor, scrollToRequest } = useRosterInteraction()
+  const { requestCoverFor, scrollToRequest, claimSeat } = useRosterInteraction()
 
   function getStatus(assignment: any) {
     const isCovered = !!assignment.actualMemberId && assignment.actualMemberId !== assignment.memberId
@@ -105,9 +114,56 @@ export default function RosterCell({ assignments = [], slotRequests = [], active
   const splitSlices = sortedAssignments.flatMap(splitByRequests)
   const displaySlices = mergeAdjacent(splitSlices)
 
+  function computeGaps(): { start: Date; end: Date }[] {
+    if (!shiftBounds) return []
+    const sorted = [...displaySlices].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    const gaps: { start: Date; end: Date }[] = []
+    let cursor = shiftBounds.start
+    for (const s of sorted) {
+      const start = new Date(s.startTime)
+      const end = new Date(s.endTime)
+      if (start.getTime() > cursor.getTime()) gaps.push({ start: cursor, end: start })
+      if (end.getTime() > cursor.getTime()) cursor = end
+    }
+    if (shiftBounds.end.getTime() > cursor.getTime()) gaps.push({ start: cursor, end: shiftBounds.end })
+    return gaps
+  }
+
+  type RenderItem =
+    | { kind: 'assignment'; sortKey: number; data: any }
+    | { kind: 'gap'; sortKey: number; start: Date; end: Date }
+
+  const renderItems: RenderItem[] = [
+    ...displaySlices.map((a): RenderItem => ({ kind: 'assignment', sortKey: new Date(a.startTime).getTime(), data: a })),
+    ...computeGaps().map((g): RenderItem => ({ kind: 'gap', sortKey: g.start.getTime(), start: g.start, end: g.end })),
+  ].sort((a, b) => a.sortKey - b.sortKey)
+
+  const handleGapClick = (start: Date, end: Date) => {
+    if (!dateStr || !applianceName || !applianceRole) return
+    claimSeat({
+      dateStr, applianceName, applianceRole,
+      label: cellLabel ?? `${applianceName} · ${applianceRole}`,
+      rangeStartStr: formatNZTime(start),
+      rangeEndStr: formatNZTime(end),
+    })
+  }
+
   return (
     <div className="w-full h-full flex flex-col gap-1">
-      {displaySlices.map((assignment) => {
+      {renderItems.map((item) => {
+        if (item.kind === 'gap') {
+          return (
+            <div
+              key={`gap-${item.start.getTime()}`}
+              onClick={() => handleGapClick(item.start, item.end)}
+              className="flex items-center justify-center px-1.5 py-1 rounded border border-dashed border-rose-300 text-rose-400 text-[10px] italic cursor-pointer hover:text-rose-600 hover:border-rose-400 hover:underline select-none"
+            >
+              Open — tap to claim
+            </div>
+          )
+        }
+
+        const assignment = item.data
         const isCovered = !!assignment.actualMemberId && assignment.actualMemberId !== assignment.memberId;
 
         const assignmentStart = new Date(assignment.startTime).getTime()

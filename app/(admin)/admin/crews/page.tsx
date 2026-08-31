@@ -7,6 +7,7 @@ import { requireAdmin } from '@/lib/auth'
 import { epochDayIndex } from '@/lib/roster-engine'
 import { todayNZDateString } from '@/lib/timezone'
 import { TriangleAlert } from 'lucide-react'
+import CrewSeatBoard from '@/components/admin/CrewSeatBoard'
 
 interface PageProps {
   searchParams: Promise<{ user?: string; success?: string; error?: string }>
@@ -29,6 +30,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
         members: {
           where: { isActive: true },
           orderBy: { lastName: 'asc' },
+          include: { qualifications: { include: { qualification: true } } },
         }
       }
     }),
@@ -217,27 +219,7 @@ export default async function CrewsPage({ searchParams }: PageProps) {
               </form>
             </div>
 
-            {/* Rename crew */}
-            <form
-              action={async (fd: FormData) => {
-                'use server'
-                try {
-                  await updateCrew(fd.get('adminId') as string, fd.get('crewId') as string, {
-                    watchName: fd.get('watchName') as string,
-                  })
-                  redirect(`/admin/crews?user=${fd.get('adminId')}&success=${encodeURIComponent('Crew updated')}`)
-                } catch (e: any) {
-                  if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
-                  redirect(`/admin/crews?user=${fd.get('adminId')}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
-                }
-              }}
-              className="flex gap-2"
-            >
-              <input type="hidden" name="adminId" value={userId} />
-              <input type="hidden" name="crewId" value={crew.id} />
-              <input name="watchName" defaultValue={crew.watchName} className="flex-1 border rounded-lg px-2 py-1 text-sm" />
-              <button type="submit" className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Save</button>
-            </form>
+            <CrewSeatBoard crewId={crew.id} adminId={userId} watchName={crew.watchName} members={crew.members} />
 
             {/* Members list */}
             <div className="space-y-1">
