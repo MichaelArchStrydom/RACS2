@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useRosterInteraction } from './RosterInteractionContext'
 import { formatNZTime } from '@/lib/timezone'
 
-//FIX: Desktop roster currently not filling the roster div. grouping to the left. looks horrible
 
 interface RosterCellProps {
   assignments: any[];
@@ -209,7 +208,7 @@ export default function RosterCell({
           if (isRequested && currentRequest) {
             scrollToRequest(currentRequest.id)
           } else if (isActiveMember && !isRequested) {
-            requestCoverFor(assignment.id)
+            requestCoverFor(assignment.id, { start: new Date(assignment.startTime), end: new Date(assignment.endTime) })
           }
         }
 

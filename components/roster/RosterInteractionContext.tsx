@@ -51,6 +51,7 @@ interface PendingEditSeat {
 
 interface RosterInteractionContextValue {
   pendingShiftAssignmentId: string | null
+  pendingShiftRange: { start: Date; end: Date } | null
   pendingScrollRequestId: string | null
   pendingClaimSeat: PendingClaimSeat | null
   isEditMode: boolean
@@ -60,7 +61,7 @@ interface RosterInteractionContextValue {
   dragSourceKey: string | null
   dragHoverKey: string | null
   draggingMember: DragMemberInfo | null
-  requestCoverFor: (assignmentId: string) => void
+  requestCoverFor: (assignmentId: string, range?: { start: Date; end: Date }) => void
   scrollToRequest: (requestId: string) => void
   claimSeat: (seat: PendingClaimSeat) => void
   toggleEditMode: () => void
@@ -80,6 +81,7 @@ const RosterInteractionContext = createContext<RosterInteractionContextValue | n
 
 export function RosterInteractionProvider({ children }: { children: React.ReactNode }) {
   const [pendingShiftAssignmentId, setPendingShiftAssignmentId] = useState<string | null>(null)
+  const [pendingShiftRange, setPendingShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [pendingScrollRequestId, setPendingScrollRequestId] = useState<string | null>(null)
   const [pendingClaimSeat, setPendingClaimSeat] = useState<PendingClaimSeat | null>(null)
   const [isEditMode, setIsEditMode] = useState(false)
@@ -150,6 +152,7 @@ export function RosterInteractionProvider({ children }: { children: React.ReactN
     <RosterInteractionContext.Provider
       value={{
         pendingShiftAssignmentId,
+        pendingShiftRange,
         pendingScrollRequestId,
         pendingClaimSeat,
         isEditMode,
@@ -159,13 +162,13 @@ export function RosterInteractionProvider({ children }: { children: React.ReactN
         dragSourceKey,
         dragHoverKey,
         draggingMember,
-        requestCoverFor: (assignmentId) => setPendingShiftAssignmentId(assignmentId),
+        requestCoverFor: (assignmentId, range) => { setPendingShiftAssignmentId(assignmentId); setPendingShiftRange(range ?? null) },
         scrollToRequest: (requestId) => setPendingScrollRequestId(requestId),
         claimSeat: (seat) => setPendingClaimSeat(seat),
         toggleEditMode: () => setIsEditMode((v) => !v),
         exitEditMode,
         openEditPanel: (seat) => setPendingEditSeat(seat),
-        clearPendingShift: () => setPendingShiftAssignmentId(null),
+        clearPendingShift: () => { setPendingShiftAssignmentId(null); setPendingShiftRange(null) },
         clearPendingScroll: () => setPendingScrollRequestId(null),
         clearPendingClaim: () => setPendingClaimSeat(null),
         clearPendingEditSeat: () => setPendingEditSeat(null),

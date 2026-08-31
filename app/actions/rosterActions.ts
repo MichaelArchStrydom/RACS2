@@ -16,17 +16,17 @@ export async function createStandInRequest(
   requestedById: string,
   startTime: Date,
   endTime: Date
-) {
+): Promise<{ success: true } | { success: false; error: string }> {
   // AUTHZ: previously this trusted requestedById straight off the wire — any
   // logged-in user could post a request under someone else's name. Now the
   // real session decides: you may request for yourself, or for anyone if
   // you're an admin/moderator (the "on behalf" feature). The same isMod flag
   // also exempts admins/mods from the past-shift restriction below.
   const caller = await getCurrentMember()
-  if (!caller) throw new Error('Not signed in')
+  if (!caller) return { success: false, error: 'Not signed in' }
   const isMod = caller.isAdmin || caller.isModerator
   if (requestedById !== caller.id && !isMod) {
-    throw new Error('You can only request cover for your own shifts.')
+    return { success: false, error: 'You can only request cover for your own shifts.' }
   }
 
   const assignment = await db.shiftAssignment.findUnique({
@@ -34,14 +34,14 @@ export async function createStandInRequest(
     include: { slot: true }
   })
 
-  if (!assignment) throw new Error("Shift assignment not found")
+  if (!assignment) return { success: false, error: 'Shift assignment not found' }
 
   if (assignment.slot.status === 'CANCELLED') {
-    throw new Error('This shift has been cancelled.')
+    return { success: false, error: 'This shift has been cancelled.' }
   }
 
   if (!isMod && isMoreThanOneDayPast(assignment.slot.date)) {
-    throw new Error('This shift is too far in the past — ask an admin to make this change.')
+    return { success: false, error: 'This shift is too far in the past — ask an admin to make this change.' }
   }
 
   const start = new Date(startTime)
@@ -52,7 +52,7 @@ export async function createStandInRequest(
     Number.isNaN(end.getTime()) ||
     !isWithinRange(start, end, boundStart, boundEnd)
   ) {
-    throw new Error(TIME_RANGE_INVALID_MESSAGE)
+    return { success: false, error: TIME_RANGE_INVALID_MESSAGE }
   }
 
   const overlappingPending = await db.standInRequest.findFirst({
@@ -65,7 +65,7 @@ export async function createStandInRequest(
     },
   })
   if (overlappingPending) {
-    throw new Error('There is already a pending cover request overlapping this time range.')
+    return { success: false, error: 'There is already a pending cover request overlapping this time range.' }
   }
 
   await db.standInRequest.create({
@@ -96,6 +96,7 @@ export async function createStandInRequest(
   })
 
   revalidatePath('/')
+  return { success: true }
 }
 
 async function resolveShiftTimes(dateStr: string, applianceName: string, client: Prisma.TransactionClient = db) {

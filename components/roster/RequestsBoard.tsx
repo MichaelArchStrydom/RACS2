@@ -72,7 +72,7 @@ export default function RequestsBoard({
   const [resolvedShiftRange, setResolvedShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
-  const { pendingShiftAssignmentId, pendingScrollRequestId, pendingClaimSeat, pendingEditSeat, clearPendingShift, clearPendingScroll, clearPendingClaim, clearPendingEditSeat } = useRosterInteraction()
+  const { pendingShiftAssignmentId, pendingShiftRange, pendingScrollRequestId, pendingClaimSeat, pendingEditSeat, clearPendingShift, clearPendingScroll, clearPendingClaim, clearPendingEditSeat } = useRosterInteraction()
   const createFormRef = useRef<HTMLFormElement>(null)
   const [scrollToFormTrigger, setScrollToFormTrigger] = useState(0)
 
@@ -150,7 +150,14 @@ export default function RequestsBoard({
     setClaimError(null)
   }
 
-  const resolveAndPrefill = (shift: UserShift) => {
+  const resolveAndPrefill = (shift: UserShift, overrideRange?: { start: Date; end: Date }) => {
+    if (overrideRange) {
+      setCoverStart(formatNZTime(overrideRange.start))
+      setCoverEnd(formatNZTime(overrideRange.end))
+      setResolvedShiftRange(overrideRange)
+      return
+    }
+
     setCoverStart(shift.defaultStart)
     setCoverEnd(shift.defaultEnd)
     setResolvedShiftRange({ start: new Date(shift.startIso), end: new Date(shift.endIso) })
@@ -186,7 +193,7 @@ export default function RequestsBoard({
       setShowCreateForm(true)
       setOnBehalfMode(false)
       setSelectedShiftId(shift.assignmentId)
-      resolveAndPrefill(shift)
+      resolveAndPrefill(shift, pendingShiftRange ?? undefined)
       setScrollToFormTrigger(n => n + 1)
     }
     clearPendingShift()
@@ -249,11 +256,11 @@ export default function RequestsBoard({
     const { start: startDate, end: endDate } = parsedCoverRange
 
     startCreateTransition(async () => {
-      try {
-        await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate)
+      const result = await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate)
+      if (result.success) {
         resetCreateState()
-      } catch (err) {
-        setCreateError(err instanceof Error ? err.message : 'Something went wrong posting this request — please try again.')
+      } else {
+        setCreateError(result.error)
         router.refresh()
       }
     })
