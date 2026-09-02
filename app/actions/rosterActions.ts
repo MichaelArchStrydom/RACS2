@@ -417,6 +417,13 @@ export async function moderatorCancelStandInRequest(
 
   const { historicalRank, historicalWatchName } = (await resolveHistoricalFields(request.requestedById))
 
+  const originalMessageRow = await db.shiftHistory.findFirst({
+    where: { relatedRequestId: requestId, message: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    select: { message: true },
+  })
+  const originalMessage = originalMessageRow?.message ?? null
+
   await db.$transaction(async (tx) => {
     // Conditional claim — if someone accepted/cancelled it a moment ago,
     // count is 0 and we roll back instead of double-actioning.
@@ -450,7 +457,7 @@ export async function moderatorCancelStandInRequest(
     // Leftover slices outside the cancelled window stay PENDING, keeping the
     // original requester and creator attribution.
     if (origStart.getTime() < effStart.getTime()) {
-      await tx.standInRequest.create({
+      const leftoverBefore = await tx.standInRequest.create({
         data: {
           slotId: request.slotId,
           requestedById: request.requestedById,
@@ -461,9 +468,26 @@ export async function moderatorCancelStandInRequest(
           createdById: request.createdById,
         }
       })
+      if (originalMessage) {
+        await tx.shiftHistory.create({
+          data: {
+            slotId: request.slotId,
+            appliance: request.slot.appliance,
+            shiftStatus: SHIFT_HISTORY_STATUS.COVER_REQUESTED,
+            memberId: request.requestedById,
+            actingMemberId: caller.id,
+            startTime: origStart,
+            endTime: effStart,
+            historicalRank,
+            historicalWatchName,
+            relatedRequestId: leftoverBefore.id,
+            message: originalMessage,
+          }
+        })
+      }
     }
     if (effEnd.getTime() < origEnd.getTime()) {
-      await tx.standInRequest.create({
+      const leftoverAfter = await tx.standInRequest.create({
         data: {
           slotId: request.slotId,
           requestedById: request.requestedById,
@@ -474,6 +498,23 @@ export async function moderatorCancelStandInRequest(
           createdById: request.createdById,
         }
       })
+      if (originalMessage) {
+        await tx.shiftHistory.create({
+          data: {
+            slotId: request.slotId,
+            appliance: request.slot.appliance,
+            shiftStatus: SHIFT_HISTORY_STATUS.COVER_REQUESTED,
+            memberId: request.requestedById,
+            actingMemberId: caller.id,
+            startTime: effEnd,
+            endTime: origEnd,
+            historicalRank,
+            historicalWatchName,
+            relatedRequestId: leftoverAfter.id,
+            message: originalMessage,
+          }
+        })
+      }
     }
   })
 
@@ -528,6 +569,13 @@ export async function acceptStandInRequest(
   const requesterHistoricalFields = await resolveHistoricalFields(request.requestedById)
 
   const isSelfReclaim = coveringMemberId === request.requestedById
+
+  const originalMessageRow = await db.shiftHistory.findFirst({
+    where: { relatedRequestId: requestId, message: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    select: { message: true },
+  })
+  const originalMessage = originalMessageRow?.message ?? null
 
   await db.$transaction(async (tx) => {
     const claim = await tx.standInRequest.updateMany({
@@ -711,7 +759,7 @@ export async function acceptStandInRequest(
     }
 
     if (origReqStart.getTime() < coverStart.getTime()) {
-      await tx.standInRequest.create({
+      const leftoverBefore = await tx.standInRequest.create({
         data: {
           slotId: request.slotId,
           requestedById: request.requestedById,
@@ -722,10 +770,27 @@ export async function acceptStandInRequest(
           createdById: request.createdById, // preserve "who actually posted this" through the split
         }
       })
+      if (originalMessage) {
+        await tx.shiftHistory.create({
+          data: {
+            slotId: request.slotId,
+            appliance: request.slot.appliance,
+            shiftStatus: SHIFT_HISTORY_STATUS.COVER_REQUESTED,
+            memberId: request.requestedById,
+            actingMemberId: caller.id,
+            startTime: origReqStart,
+            endTime: coverStart,
+            historicalRank: requesterHistoricalFields.historicalRank,
+            historicalWatchName: requesterHistoricalFields.historicalWatchName,
+            relatedRequestId: leftoverBefore.id,
+            message: originalMessage,
+          }
+        })
+      }
     }
 
     if (coverEnd.getTime() < origReqEnd.getTime()) {
-      await tx.standInRequest.create({
+      const leftoverAfter = await tx.standInRequest.create({
         data: {
           slotId: request.slotId,
           requestedById: request.requestedById,
@@ -736,6 +801,23 @@ export async function acceptStandInRequest(
           createdById: request.createdById, // preserve "who actually posted this" through the split
         }
       })
+      if (originalMessage) {
+        await tx.shiftHistory.create({
+          data: {
+            slotId: request.slotId,
+            appliance: request.slot.appliance,
+            shiftStatus: SHIFT_HISTORY_STATUS.COVER_REQUESTED,
+            memberId: request.requestedById,
+            actingMemberId: caller.id,
+            startTime: coverEnd,
+            endTime: origReqEnd,
+            historicalRank: requesterHistoricalFields.historicalRank,
+            historicalWatchName: requesterHistoricalFields.historicalWatchName,
+            relatedRequestId: leftoverAfter.id,
+            message: originalMessage,
+          }
+        })
+      }
     }
 
     await tx.shiftHistory.create({
