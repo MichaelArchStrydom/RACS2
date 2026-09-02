@@ -90,6 +90,8 @@ model Member {
   covers             StandInRequest[]  @relation("CoveredBy")
   responsesMade      StandInResponse[] @relation("RespondedBy")
   responsesCovering  StandInResponse[] @relation("CoveringBy")
+  history            ShiftHistory[]    @relation("ShiftHistoryMember")
+  actingHistory      ShiftHistory[]    @relation("ActingMember")
 
   qualifications MemberQualification[]
   leaveRecords   MemberLeave[]
@@ -214,9 +216,8 @@ model ShiftSlot {
   publicHolidayId String?
   publicHoliday   PublicHoliday? @relation(fields: [publicHolidayId], references: [id])
 
-  assignments    ShiftAssignment[]
-  requests       StandInRequest[]
-  // shiftHistories ShiftHistory[] // TEMP: commented out for a main-Neon push that must not include the in-progress ShiftHistory feature — restore after.
+  assignments ShiftAssignment[]
+  requests    StandInRequest[]
 
   @@unique([date, appliance, status]) // prevents duplicate self claims
   @@index([date])
@@ -224,18 +225,41 @@ model ShiftSlot {
 }
 
 // ShiftHistory is a record of whats happened to a shift, who did it and why
-// TEMP: commented out for a main-Neon push that must not include this in-progress feature — restore after.
-// model ShiftHistory {
-//   id      String   @id @default(uuid())
-//   date    DateTime @default(now())
-//   // message is where members can write justifications as to why they put up the shift.
-//   // claimers or initial generations dont need a message, maybe a "claimed" or "generated" but idk if that matters.
-//   // didnt want to put message in StandInRequest, bc I thought a organised record table would be cleaner?
-//   message String?
-//
-//   slotId String
-//   slot   ShiftSlot @relation(fields: [slotId], references: [id])
-// }
+model ShiftHistory {
+  id            String   @id @default(uuid())
+  slotId        String?
+  createdAt     DateTime @default(now())
+  startTime     DateTime
+  endTime       DateTime
+  appliance     String
+  applianceRole String?
+  // shift status stores the type of shift action,
+  // Eg. generatedAssignment, coverRequest, coverAccept, adminAction and so on.
+  shiftStatus   String?
+  // message is where members can write justifications as to why they put up the shift.
+  // claimers or initial generations dont need a message, maybe a "claimed" or "generated" but idk if that matters.
+  // didnt want to put message in StandInRequest, bc I thought a organised record table would be cleaner?
+  message       String?
+
+  // stores the memeberID for the person who the shift was for
+  memberId            String
+  member              Member  @relation("ShiftHistoryMember", fields: [memberId], references: [id])
+  historicalRank      String?
+  historicalWatchName String?
+
+  // stores the memberId of admin or member that initiated the change.
+  actingMemberId String?
+  actingMember   Member? @relation("ActingMember", fields: [actingMemberId], references: [id])
+
+  relatedAssignmentId String?
+  relatedRequestId    String?
+
+  @@index([memberId])
+  @@index([actingMemberId])
+  @@index([createdAt])
+  @@index([relatedAssignmentId])
+  @@index([relatedRequestId])
+}
 
 //  SHIFT ASSIGNMENT
 model ShiftAssignment {

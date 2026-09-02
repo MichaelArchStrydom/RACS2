@@ -10,12 +10,14 @@ import { getCurrentMember } from '@/lib/auth'
 import { sendPushToMember, sendPushToMembers } from '@/lib/push'
 import { getShiftTimesForDate, isWeekendDate } from '@/lib/roster-engine'
 import { snapToHalfHour } from '@/lib/timeSnap'
+import { SHIFT_HISTORY_STATUS } from '@/lib/shiftHistory'
 
 export async function createStandInRequest(
   assignmentId: string,
   requestedById: string,
   startTime: Date,
-  endTime: Date
+  endTime: Date,
+  message?: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   // AUTHZ: previously this trusted requestedById straight off the wire — any
   // logged-in user could post a request under someone else's name. Now the
@@ -68,16 +70,36 @@ export async function createStandInRequest(
     return { success: false, error: 'There is already a pending cover request overlapping this time range.' }
   }
 
-  await db.standInRequest.create({
-    data: {
-      slotId: assignment.slotId,
-      requestedById,
-      startTime: start,
-      endTime: end,
-      status: "PENDING",
-      requestType: "COVER",
-      createdById: caller.id, // audit: who actually posted it
-    }
+  const { historicalRank, historicalWatchName } = await resolveHistoricalFields(requestedById)
+
+  await db.$transaction(async (tx) => {
+    const request = await tx.standInRequest.create({
+      data: {
+        slotId: assignment.slotId,
+        requestedById,
+        startTime: start,
+        endTime: end,
+        status: "PENDING",
+        requestType: "COVER",
+        createdById: caller.id, // audit: who actually posted it
+      }
+    })
+    await tx.shiftHistory.create({
+      data: {
+        slotId: assignment.slotId,
+        appliance: assignment.slot.appliance,
+        applianceRole: assignment.applianceRole,
+        shiftStatus: SHIFT_HISTORY_STATUS.COVER_REQUESTED,
+        memberId: requestedById,
+        actingMemberId: caller.id,
+        startTime: start,
+        endTime: end,
+        historicalRank,
+        historicalWatchName,
+        relatedRequestId: request.id,
+        message,
+      },
+    })
   })
 
   after(async () => {
@@ -176,7 +198,8 @@ export async function createDirectAssignment(
   slotId: string,
   applianceRole: string,
   rangeStartStr?: string,
-  rangeEndStr?: string
+  rangeEndStr?: string,
+  message?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -192,8 +215,26 @@ export async function createDirectAssignment(
 
   const { historicalRank, historicalWatchName } = await resolveHistoricalFields(memberId)
 
-  await db.shiftAssignment.create({
-    data: { slotId, applianceRole, memberId, startTime: start, endTime: end, historicalRank, historicalWatchName },
+  await db.$transaction(async (tx) => {
+    const assignment = await tx.shiftAssignment.create({
+      data: { slotId, applianceRole, memberId, startTime: start, endTime: end, historicalRank, historicalWatchName },
+    })
+    await tx.shiftHistory.create({
+      data: {
+        slotId,
+        appliance: slot.appliance,
+        applianceRole,
+        shiftStatus: SHIFT_HISTORY_STATUS.DIRECT_ASSIGN,
+        memberId,
+        actingMemberId: caller.id,
+        startTime: start,
+        endTime: end,
+        historicalRank,
+        historicalWatchName,
+        message,
+        relatedAssignmentId: assignment.id,
+      },
+    })
   })
 
   revalidatePath('/')
@@ -209,7 +250,8 @@ export async function claimUnassignedShift(
   applianceName: string,
   applianceRole: string,
   rangeStartStr?: string,
-  rangeEndStr?: string
+  rangeEndStr?: string,
+  message?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -231,10 +273,35 @@ export async function claimUnassignedShift(
 
   const { historicalRank, historicalWatchName } = await resolveHistoricalFields(caller.id)
 
-  await db.shiftAssignment.create({
-    data: { slotId: slot.id, applianceRole, memberId: caller.id, startTime: start, endTime: end, historicalRank, historicalWatchName },
+  await db.$transaction(async (tx) => {
+    const assignment = await tx.shiftAssignment.create({
+      data: {
+        slotId: slot.id,
+        applianceRole,
+        memberId: caller.id,
+        startTime: start,
+        endTime: end,
+        historicalRank,
+        historicalWatchName
+      }
+    })
+    await tx.shiftHistory.create({
+      data: {
+        slotId: slot.id,
+        appliance: applianceName,
+        applianceRole,
+        shiftStatus: SHIFT_HISTORY_STATUS.CLAIMED,
+        memberId: caller.id,
+        actingMemberId: caller.id,
+        startTime: start,
+        endTime: end,
+        historicalRank,
+        historicalWatchName,
+        message,
+        relatedAssignmentId: assignment.id
+      }
+    })
   })
-
   revalidatePath('/')
 }
 
@@ -242,7 +309,8 @@ export async function saveEditedTimeline(
   dateStr: string,
   applianceName: string,
   applianceRole: string,
-  segments: { memberId: string | null; startStr: string; endStr: string }[]
+  segments: { memberId: string | null; startStr: string; endStr: string }[],
+  message?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -276,8 +344,24 @@ export async function saveEditedTimeline(
 
     for (const seg of parsed) {
       const { historicalRank, historicalWatchName } = await resolveHistoricalFields(seg.memberId, tx)
-      await tx.shiftAssignment.create({
+      const assignment = await tx.shiftAssignment.create({
         data: { slotId: slot.id, applianceRole, memberId: seg.memberId, startTime: seg.start, endTime: seg.end, historicalRank, historicalWatchName },
+      })
+      await tx.shiftHistory.create({
+        data: {
+          slotId: slot.id,
+          appliance: applianceName,
+          applianceRole,
+          shiftStatus: SHIFT_HISTORY_STATUS.ADMIN_EDIT,
+          memberId: seg.memberId,
+          actingMemberId: caller.id,
+          startTime: seg.start,
+          endTime: seg.end,
+          historicalRank,
+          historicalWatchName,
+          relatedAssignmentId: assignment.id,
+          message,
+        },
       })
     }
 
@@ -300,7 +384,8 @@ export async function saveEditedTimeline(
 export async function moderatorCancelStandInRequest(
   requestId: string,
   selectedStartStr: string,
-  selectedEndStr: string
+  selectedEndStr: string,
+  message?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -308,7 +393,7 @@ export async function moderatorCancelStandInRequest(
     throw new Error('Unauthorised: moderator or admin access required')
   }
 
-  const request = await db.standInRequest.findUnique({ where: { id: requestId } })
+  const request = await db.standInRequest.findUnique({ where: { id: requestId }, include: { slot: true } })
   if (!request) throw new Error('Request not found')
   if (request.status !== 'PENDING') throw new Error(ALREADY_ACTIONED)
 
@@ -330,6 +415,8 @@ export async function moderatorCancelStandInRequest(
     throw new Error('Selected times do not overlap this request.')
   }
 
+  const { historicalRank, historicalWatchName } = (await resolveHistoricalFields(request.requestedById))
+
   await db.$transaction(async (tx) => {
     // Conditional claim — if someone accepted/cancelled it a moment ago,
     // count is 0 and we roll back instead of double-actioning.
@@ -342,6 +429,22 @@ export async function moderatorCancelStandInRequest(
         cancelledById: caller.id, // audit: who cancelled it
       }
     })
+    await tx.shiftHistory.create({
+      data: {
+        slotId: request.slotId,
+        appliance: request.slot.appliance,
+        //applianceRole: request.slot. FIX: NEEDS ROLE HERE
+        shiftStatus: SHIFT_HISTORY_STATUS.COVER_CANCELLED,
+        memberId: request.requestedById,
+        actingMemberId: caller.id,
+        startTime: effStart,
+        endTime: effEnd,
+        historicalRank,
+        historicalWatchName,
+        message
+      },
+    })
+
     if (claim.count === 0) throw new Error(ALREADY_ACTIONED)
 
     // Leftover slices outside the cancelled window stay PENDING, keeping the
@@ -381,7 +484,8 @@ export async function acceptStandInRequest(
   requestId: string,
   coveringMemberId: string,
   selectedStartStr: string,
-  selectedEndStr: string
+  selectedEndStr: string,
+  message?: string
 ) {
   const caller = await getCurrentMember()
   if (!caller) throw new Error('Not signed in')
@@ -417,6 +521,13 @@ export async function acceptStandInRequest(
   if (!isWithinRange(coverStart, coverEnd, origReqStart, origReqEnd)) {
     throw new Error(TIME_RANGE_INVALID_MESSAGE)
   }
+
+  //stores the covering members data, bc prev member can be traced back
+  const { historicalRank, historicalWatchName } = (await resolveHistoricalFields(coveringMemberId))
+
+  const requesterHistoricalFields = await resolveHistoricalFields(request.requestedById)
+
+  const isSelfReclaim = coveringMemberId === request.requestedById
 
   await db.$transaction(async (tx) => {
     const claim = await tx.standInRequest.updateMany({
@@ -464,6 +575,21 @@ export async function acceptStandInRequest(
       await tx.standInRequest.update({
         where: { id: sibling.id },
         data: { status: 'CANCELLED', cancelledById: caller.id },
+      })
+      await tx.shiftHistory.create({
+        data: {
+          slotId: sibling.slotId,
+          appliance: request.slot.appliance,
+          shiftStatus: SHIFT_HISTORY_STATUS.COVER_CANCELLED,
+          memberId: sibling.requestedById,
+          actingMemberId: caller.id,
+          startTime: sibling.startTime,
+          endTime: sibling.endTime,
+          historicalRank: requesterHistoricalFields.historicalRank,
+          historicalWatchName: requesterHistoricalFields.historicalWatchName,
+          relatedRequestId: sibling.id,
+          message: 'Automatically resolved: Overlapped with an accepted cover request.',
+        },
       })
     }
 
@@ -534,7 +660,7 @@ export async function acceptStandInRequest(
           })
         }
 
-        await tx.shiftAssignment.create({
+        const duringAssignment = await tx.shiftAssignment.create({
           data: {
             slotId: assignment.slotId,
             applianceRole: assignment.applianceRole,
@@ -545,6 +671,24 @@ export async function acceptStandInRequest(
             historicalRank: assignment.historicalRank,
             historicalWatchName: assignment.historicalWatchName
           }
+        })
+
+        await tx.shiftHistory.create({
+          data: {
+            slotId: assignment.slotId,
+            appliance: request.slot.appliance,
+            applianceRole: assignment.applianceRole,
+            shiftStatus: isSelfReclaim ? SHIFT_HISTORY_STATUS.COVER_CANCELLED : SHIFT_HISTORY_STATUS.COVER_ACCEPTED,
+            memberId: coveringMemberId,
+            actingMemberId: caller.id,
+            startTime: actualStart,
+            endTime: actualEnd,
+            historicalRank,
+            historicalWatchName,
+            relatedRequestId: requestId,
+            relatedAssignmentId: duringAssignment.id,
+            message,
+          },
         })
 
         if (actualEnd.getTime() < origEnd.getTime()) {
@@ -593,6 +737,25 @@ export async function acceptStandInRequest(
         }
       })
     }
+
+    await tx.shiftHistory.create({
+      data: {
+        slotId: request.slotId,
+        appliance: request.slot.appliance,
+        //applianceRole: request.slot. FIX: NEEDS ROLE HERE
+        shiftStatus: coveringMemberId === request.requestedById ?
+          SHIFT_HISTORY_STATUS.COVER_CANCELLED :
+          SHIFT_HISTORY_STATUS.COVER_ACCEPTED,
+        memberId: coveringMemberId,
+        actingMemberId: caller.id,
+        relatedRequestId: requestId,
+        startTime: coverStart,
+        endTime: coverEnd,
+        historicalRank,
+        historicalWatchName,
+        message
+      }
+    })
   })
 
   // Only notify on a genuine pickup by someone else — a self-reclaim

@@ -9,6 +9,7 @@ import { ALREADY_ACTIONED } from '@/lib/errors'
 import { sendPushToMembers } from '@/lib/push'
 import { epochDayIndex } from '@/lib/roster-engine'
 import { fetchMusterData, matchMemberToOsm } from '@/lib/dashboardLiveOsm'
+import { SHIFT_HISTORY_STATUS } from '@/lib/shiftHistory'
 
 async function requireAdmin() {
   const member = await getCurrentMember()
@@ -499,16 +500,16 @@ export async function cancelStandInRequest(adminId: string, requestId: string) {
 
 //  ROSTER GENERATION 
 
-export async function generateRoster(adminId: string, startDateStr: string, days: number) {
+export async function generateRoster(adminId: string, startDateStr: string, days: number, message?: string) {
   await requireAdmin()
   const { generateRosterForDateRange } = await import('@/lib/roster-engine')
-  await generateRosterForDateRange(startDateStr, days)
+  await generateRosterForDateRange(startDateStr, days, message)
   revalidatePath('/')
   revalidatePath('/admin/roster')
 }
 
-export async function clearRosterRange(adminId: string, startDateStr: string, endDateStr: string) {
-  await requireAdmin()
+export async function clearRosterRange(adminId: string, startDateStr: string, endDateStr: string, message?: string) {
+  const admin = await requireAdmin()
   const { nzMidnightUTC, addDaysToDateString } = await import('@/lib/timezone')
   const start = nzMidnightUTC(startDateStr)
   const end = nzMidnightUTC(addDaysToDateString(endDateStr, 1))
@@ -523,7 +524,29 @@ export async function clearRosterRange(adminId: string, startDateStr: string, en
   const slotIds = slots.map(s => s.id)
 
   if (slotIds.length > 0) {
+    // Snapshot every assignment being wiped before deleting, so  each one gets its own SHIFT_CANCELLED history row 
+    const assignments = await db.shiftAssignment.findMany({
+      where: { slotId: { in: slotIds } },
+      include: { slot: true },
+    })
+
     await db.$transaction([
+      ...assignments.map((a) => db.shiftHistory.create({
+        data: {
+          slotId: a.slotId,
+          appliance: a.slot.appliance,
+          applianceRole: a.applianceRole,
+          shiftStatus: SHIFT_HISTORY_STATUS.SHIFT_CANCELLED,
+          memberId: a.actualMemberId ?? a.memberId,
+          actingMemberId: admin.id,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          historicalRank: a.historicalRank,
+          historicalWatchName: a.historicalWatchName,
+          relatedAssignmentId: a.id,
+          message,
+        },
+      })),
       db.standInRequest.deleteMany({ where: { slotId: { in: slotIds } } }),
       db.shiftAssignment.deleteMany({ where: { slotId: { in: slotIds } } }),
       db.shiftSlot.deleteMany({ where: { id: { in: slotIds } } }),
@@ -547,12 +570,12 @@ export async function getRosterCalendarMonth(adminId: string, monthStr: string) 
 // the database until the admin hits the global "Save Changes" button, which
 // sends every accumulated edit in one call so they all commit atomically.
 export type RosterCalendarChange =
-  | { type: 'cancel'; slotId: string }
-  | { type: 'replaceCrew'; slotId: string; crewId: string }
-  | { type: 'addAppliance'; dateStr: string; applianceName: string; crewId: string }
+  | { type: 'cancel'; slotId: string; message?: string }
+  | { type: 'replaceCrew'; slotId: string; crewId: string; message?: string }
+  | { type: 'addAppliance'; dateStr: string; applianceName: string; crewId: string; message?: string }
 
 export async function applyRosterCalendarChanges(adminId: string, changes: RosterCalendarChange[]) {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const { nzMidnightUTC } = await import('@/lib/timezone')
   const { isWeekendDate, getShiftTimesForDate, createAssignmentsForSlot } = await import('@/lib/roster-engine')
 
@@ -561,6 +584,10 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
   await db.$transaction(async (tx) => {
     for (const change of changes) {
       if (change.type === 'cancel') {
+        const existingAssignments = await tx.shiftAssignment.findMany({ where: { slotId: change.slotId } })
+        const slotForCancel = await tx.shiftSlot.findUnique({ where: { id: change.slotId } })
+        if (!slotForCancel) throw new Error('Shift slot not found')
+
         await tx.shiftSlot.update({ where: { id: change.slotId }, data: { status: 'CANCELLED' } })
         // Cancelling a shift must also cancel any of its own PENDING requests
         // — otherwise a member could still accept cover for a shift that no
@@ -570,6 +597,24 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
           where: { slotId: change.slotId, status: 'PENDING' },
           data: { status: 'CANCELLED' },
         })
+        for (const a of existingAssignments) {
+          await tx.shiftHistory.create({
+            data: {
+              slotId: change.slotId,
+              appliance: slotForCancel.appliance,
+              applianceRole: a.applianceRole,
+              shiftStatus: SHIFT_HISTORY_STATUS.SHIFT_CANCELLED,
+              memberId: a.actualMemberId ?? a.memberId,
+              actingMemberId: admin.id,
+              startTime: a.startTime,
+              endTime: a.endTime,
+              historicalRank: a.historicalRank,
+              historicalWatchName: a.historicalWatchName,
+              relatedAssignmentId: a.id,
+              message: change.message,
+            },
+          })
+        }
         continue
       }
 
@@ -585,7 +630,11 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
         // it was already correctly determined when the slot was created.
         const dateStr = new Date(slot.date).toLocaleDateString('en-CA', { timeZone: 'Pacific/Auckland' })
         const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, slot.isWeekend)
-        await createAssignmentsForSlot(change.slotId, crew, shiftStart, shiftEnd, tx)
+        await createAssignmentsForSlot(change.slotId, crew, shiftStart, shiftEnd, slot.appliance, tx, {
+          shiftStatus: SHIFT_HISTORY_STATUS.ADMIN_EDIT,
+          actingMemberId: admin.id,
+          message: change.message,
+        })
         continue
       }
 
@@ -605,7 +654,11 @@ export async function applyRosterCalendarChanges(adminId: string, changes: Roste
             isWeekend
           }
         })
-        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
+        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, change.applianceName, tx, {
+          shiftStatus: SHIFT_HISTORY_STATUS.ADMIN_EDIT,
+          actingMemberId: admin.id,
+          message: change.message,
+        })
       }
     }
   })

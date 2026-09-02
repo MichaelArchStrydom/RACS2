@@ -1,6 +1,7 @@
 import { db } from './db'
 import type { Prisma } from '@prisma/client'
 import { nzMidnightUTC, addDaysToDateString } from './timezone'
+import { SHIFT_HISTORY_STATUS, type ShiftHistoryStatus } from './shiftHistory'
 
 export { isWeekendDate, getShiftTimesForDate, DEFAULT_SHIFT_HOURS } from './shiftHours'
 export type { ApplianceShiftHours } from './shiftHours'
@@ -151,11 +152,17 @@ export async function createAssignmentsForSlot(
   crew: any,
   shiftStart: Date,
   shiftEnd: Date,
-  client: Prisma.TransactionClient = db
+  appliance: string,
+  client: Prisma.TransactionClient = db,
+  options?: { shiftStatus?: ShiftHistoryStatus; actingMemberId?: string | null; message?: string }
 ) {
+  const shiftStatus = options?.shiftStatus ?? SHIFT_HISTORY_STATUS.GENERATED
+  const actingMemberId = options?.actingMemberId ?? null
+  const message = options?.message
+
   const lineup = buildSeatLineup(crew)
   for (const seat of lineup) {
-    await client.shiftAssignment.create({
+    const assignment = await client.shiftAssignment.create({
       data: {
         slotId,
         applianceRole: seat.role,
@@ -166,10 +173,26 @@ export async function createAssignmentsForSlot(
         historicalWatchName: crew.watchName
       }
     })
+    await client.shiftHistory.create({
+      data: {
+        slotId,
+        appliance,
+        applianceRole: seat.role,
+        shiftStatus,
+        memberId: seat.member.id,
+        actingMemberId,
+        startTime: shiftStart,
+        endTime: shiftEnd,
+        historicalRank: seat.member.rank,
+        historicalWatchName: crew.watchName,
+        relatedAssignmentId: assignment.id,
+        message,
+      }
+    })
   }
 }
 
-export async function generateRosterForDateRange(startDateStr: string, daysToGenerate: number) {
+export async function generateRosterForDateRange(startDateStr: string, daysToGenerate: number, message?: string) {
   const crews = await db.crew.findMany({
     where: { isActive: true },
     include: {
@@ -231,7 +254,7 @@ export async function generateRosterForDateRange(startDateStr: string, daysToGen
         })
 
         const { shiftStart, shiftEnd } = getShiftTimesForDate(dateStr, isWeekend, applianceHoursByName.get(applianceName))
-        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, tx)
+        await createAssignmentsForSlot(slot.id, crew, shiftStart, shiftEnd, applianceName, tx, { message })
       }
 
       // Generate both trucks but with only one active crew, there's no

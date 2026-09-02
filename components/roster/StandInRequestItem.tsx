@@ -99,7 +99,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
   const isOwnRequest = activeUserId === request.requestedById
 
   return (
-    <div className="p-4 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs border-b last:border-b-0">
+    <div className="p-4 bg-white flex flex-col md:flex-row md:items-center justify-between gap-1 text-xs border-b last:border-b-0">
       <div>
         <div className="flex items-center gap-2">
           <span className="font-bold text-slate-800 text-sm">
@@ -109,12 +109,28 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
             {request.slot.appliance}
           </span>
         </div>
-        <p className="text-slate-500 mt-1">
-          Shift Date: {new Date(request.slot.date).toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' })}
-        </p>
-        <p className="text-slate-400 font-mono text-[10px] mt-0.5">
-          Requested Hours: {defaultStart} – {defaultEnd}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-slate-500 mt-1">
+            {new Date(request.slot.date).toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' })}
+          </p>
+          <p className="text-slate-400 font-mono text-[10px] mt-0.5">
+            {defaultStart} – {defaultEnd}
+          </p>
+        </div>
+        {request.message && (
+          <div className="rounded-lg p-1 text-[11px] mt-1 w-fit bg-green-100 ">
+            <p className="text-black line-clamp-2 font-bold text-[11px]  mt-0.5">
+              Message:
+            </p>
+            <p className="line-clamp-2 text-black mb-1 px-1"
+              title={request.message}>{request.message}</p>
+          </div>
+        )}
+        {request.createdById && request.requestedById !== request.createdById && (
+          <p className="text-slate-500  text-[11px] mt-0.5">
+            Assigned by: {request.createdBy?.lastName}, {request.createdBy?.firstName}
+          </p>
+        )}
       </div>
 
       {request.status === "PENDING" ? (
@@ -122,7 +138,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
           {error && (
             <p className="text-[11px] font-semibold text-rose-600">{error}</p>
           )}
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-end gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-semibold text-slate-500">Fulfill From:</span>
               {/* Desktop: compact free-text entry. Typing just an hour
@@ -132,7 +148,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
                 value={coverStart}
                 onChange={e => setCoverStart(e.target.value)}
                 onBlur={e => setCoverStart(normalizeTimeInput(e.target.value))}
-                className="hidden md:block bg-white border rounded px-2 py-1 w-16 text-center font-mono text-xs"
+                className="hidden md:block bg-white border rounded px-2 py-2 w-16 text-center font-mono text-xs"
               />
               {/* Mobile: native time picker */}
               <input
@@ -150,7 +166,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
                 value={coverEnd}
                 onChange={e => setCoverEnd(e.target.value)}
                 onBlur={e => setCoverEnd(normalizeTimeInput(e.target.value))}
-                className="hidden md:block bg-white border rounded px-2 py-1 w-16 text-center font-mono text-xs"
+                className="hidden md:block bg-white border rounded px-2 py-2 w-16 text-center font-mono text-xs"
               />
               <input
                 type="time"
@@ -164,7 +180,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
               type="submit"
               disabled={isPending || !!blockReason}
               title={blockReason ?? undefined}
-              className={`flex items-center justify-center gap-1.5 px-4 font-bold rounded shadow-sm transition-colors text-xs disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-2.5 md:py-1.5
+              className={`flex items-center justify-center gap-1.5 px-4 font-bold rounded shadow-sm transition-colors text-sm disabled:bg-slate-200 disabled:text-slate-400 w-full md:w-auto py-3 md:py-2 whitespace-nowrap
                 ${cancelMode
                   ? 'bg-rose-600 hover:bg-rose-700 text-white'
                   : isOwnRequest

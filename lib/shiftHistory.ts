@@ -1,0 +1,13 @@
+
+//This constant is to prevent mistakes when setting history status
+export const SHIFT_HISTORY_STATUS = {
+  GENERATED: 'GENERATED',
+  CLAIMED: 'CLAIMED',
+  COVER_REQUESTED: 'COVER_REQUESTED',
+  COVER_ACCEPTED: 'COVER_ACCEPTED',
+  COVER_CANCELLED: 'COVER_CANCELLED',
+  ADMIN_EDIT: 'ADMIN_EDIT',
+  DIRECT_ASSIGN: 'DIRECT_ASSIGN',
+  SHIFT_CANCELLED: 'SHIFT_CANCELLED'
+} as const
+export type ShiftHistoryStatus = typeof SHIFT_HISTORY_STATUS[keyof typeof SHIFT_HISTORY_STATUS]

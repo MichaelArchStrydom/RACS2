@@ -92,6 +92,27 @@ export default async function HomePage({ searchParams }: PageProps) {
     })
   ]);
 
+  const historyEntries = await db.shiftHistory.findMany({
+    where: { relatedRequestId: { in: standInRequests.map(r => r.id) } },
+    select: { relatedRequestId: true, message: true },
+  })
+  const messageByRequestId = new Map(historyEntries.map(h => [
+    h.relatedRequestId,
+    h.message
+  ]))
+
+  const creatorIds = [...new Set(standInRequests.map(r => r.createdById).filter((id): id is string => !!id))]
+  const creators = await db.member.findMany({
+    where: { id: { in: creatorIds } },
+    select: { id: true, firstName: true, lastName: true },
+  })
+  const creatorById = new Map(creators.map(m => [m.id, m]))
+
+  const requestsWithHistory = standInRequests.map(r => ({
+    ...r,
+    message: messageByRequestId.get(r.id) ?? null,
+    createdBy: r.createdById ? creatorById.get(r.createdById) ?? null : null,
+  }))
   // Read from the cache populated by the Pi's periodic refresh job
   // (ops/osm-status-refresher) — never fetched live on page view. Null until
   // the member is linked and the first refresh has run for them.
@@ -283,7 +304,7 @@ export default async function HomePage({ searchParams }: PageProps) {
           </section>
 
           <RequestsBoard
-            requests={standInRequests}
+            requests={requestsWithHistory}
             activeUserId={activeUserId}
             userShifts={userShifts}
             isModerator={viewerIsMod}

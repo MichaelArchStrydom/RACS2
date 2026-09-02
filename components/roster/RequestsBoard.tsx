@@ -69,6 +69,7 @@ export default function RequestsBoard({
   const [selectedShiftId, setSelectedShiftId] = useState('')
   const [coverStart, setCoverStart] = useState('')
   const [coverEnd, setCoverEnd] = useState('')
+  const [coverMessage, setCoverMessage] = useState('')
   const [resolvedShiftRange, setResolvedShiftRange] = useState<{ start: Date; end: Date } | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
   const [createError, setCreateError] = useState<string | null>(null)
@@ -140,6 +141,7 @@ export default function RequestsBoard({
     setSelectedShiftId('')
     setCoverStart('')
     setCoverEnd('')
+    setCoverMessage('')
     setResolvedShiftRange(null)
     setCreateError(null)
     setCreateShiftMode(false)
@@ -256,7 +258,7 @@ export default function RequestsBoard({
     const { start: startDate, end: endDate } = parsedCoverRange
 
     startCreateTransition(async () => {
-      const result = await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate)
+      const result = await createStandInRequest(selectedShift.assignmentId, requestForId, startDate, endDate, coverMessage)
       if (result.success) {
         resetCreateState()
       } else {
@@ -475,6 +477,21 @@ export default function RequestsBoard({
               </select>
             )}
 
+            {selectedShiftId && (
+              <div className="relative w-full">
+                <textarea
+                  value={coverMessage}
+                  onChange={(e) => setCoverMessage(e.target.value)}
+                  placeholder="Optional note (e.g. reason for the request)"
+                  maxLength={100}
+                  rows={2}
+                  className="w-full border rounded-lg px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                />
+                <span className="absolute bottom-3 right-3 text-[10px] text-slate-400 bg-white/80 px-1 rounded">
+                  {coverMessage.length}/100
+                </span>
+              </div>
+            )}
             {selectedShiftId && (
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1">
