@@ -95,11 +95,13 @@ export default async function HomePage({ searchParams }: PageProps) {
   const historyEntries = await db.shiftHistory.findMany({
     where: { relatedRequestId: { in: standInRequests.map(r => r.id) } },
     select: { relatedRequestId: true, message: true },
+    orderBy: { createdAt: 'asc' },
   })
-  const messageByRequestId = new Map(historyEntries.map(h => [
-    h.relatedRequestId,
-    h.message
-  ]))
+
+  const messageByRequestId = new Map<string, string>()
+  for (const h of historyEntries) {
+    if (h.relatedRequestId && h.message) messageByRequestId.set(h.relatedRequestId, h.message)
+  }
 
   const creatorIds = [...new Set(standInRequests.map(r => r.createdById).filter((id): id is string => !!id))]
   const creators = await db.member.findMany({

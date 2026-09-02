@@ -3,7 +3,7 @@
 import { db } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { hashPassword, getCurrentMember } from '@/lib/auth'
+import { hashPassword, getCurrentMember, revokeAllSessionsForMember } from '@/lib/auth'
 import { sanitizeName, sanitizeRank, sanitizeZoneType, sanitizeEmail, sanitizeText, sanitizeLongText } from '@/lib/sanitize'
 import { ALREADY_ACTIONED } from '@/lib/errors'
 import { sendPushToMembers } from '@/lib/push'
@@ -162,6 +162,12 @@ export async function deactivateMember(adminId: string, memberId: string) {
   await requireAdmin()
   await db.member.update({ where: { id: memberId }, data: { isActive: false, crewId: null } })
   revalidatePath('/admin/members')
+}
+
+export async function forceSignOutMember(adminId: string, memberId: string) {
+  await requireAdmin()
+  await revokeAllSessionsForMember(memberId)
+  revalidatePath(`/admin/members/${memberId}`)
 }
 
 // auto matching gets it right most of the time, but not always, so

@@ -106,12 +106,13 @@ model Member {
 
 //SESSION
 model Session {
-  id        String   @id @default(uuid())
-  token     String   @unique // random opaque value, stored in the cookie
-  memberId  String
-  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  expiresAt DateTime
+  id         String   @id @default(uuid())
+  token      String   @unique // random opaque value, stored in the cookie
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  rememberMe Boolean  @default(false) // gates the sliding-window refresh in getCurrentMember() — see lib/auth.ts
 
   @@index([memberId])
 }

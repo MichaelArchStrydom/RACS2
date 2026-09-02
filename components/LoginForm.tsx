@@ -90,7 +90,7 @@ export default function LoginForm() {
               </div>
               <div>
                 <span className="text-sm font-medium text-slate-700">Remember me</span>
-                <p className="text-xs text-slate-400">Stay signed in for 30 days</p>
+                <p className="text-xs text-slate-400">Stay signed in until you sign out</p>
               </div>
             </label>
 

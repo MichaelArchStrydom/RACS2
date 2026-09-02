@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { db } from '@/lib/db'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { updateMember, deactivateMember, setMemberQualification, addHourAdjustment, resetMemberPassword, updateMemberOsmLink } from '@/app/actions/adminActions'
+import { updateMember, deactivateMember, forceSignOutMember, setMemberQualification, addHourAdjustment, resetMemberPassword, updateMemberOsmLink } from '@/app/actions/adminActions'
 import { requireAdmin } from '@/lib/auth'
 import { ArrowLeft, Check } from 'lucide-react'
 import { roundHoursForDisplay } from '@/lib/formatHours'
@@ -236,6 +236,33 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
             </div>
             <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition-colors">
               Reset Password
+            </button>
+          </form>
+        </section>
+
+        {/* ── Force sign out ── */}
+        <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">Force Sign Out</h2>
+          <p className="text-xs text-slate-400">
+            Ends this member's sessions on every device — including a "remember me" session that would otherwise
+            stay signed in indefinitely. Their password is unchanged; they can just log back in.
+          </p>
+          <form action={async (fd: FormData) => {
+            'use server'
+            const adminId = fd.get('adminId') as string
+            const mId = fd.get('memberId') as string
+            try {
+              await forceSignOutMember(adminId, mId)
+              redirect(`/admin/members/${mId}?user=${adminId}&success=${encodeURIComponent('Member signed out everywhere')}`)
+            } catch (e: any) {
+              if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+              redirect(`/admin/members/${mId}?user=${adminId}&error=${encodeURIComponent(e.message ?? 'Unknown error')}`)
+            }
+          }}>
+            <input type="hidden" name="adminId" value={userId} />
+            <input type="hidden" name="memberId" value={memberId} />
+            <button type="submit" className="w-full py-2 border border-rose-300 text-rose-600 hover:bg-rose-50 text-sm font-semibold rounded-lg transition-colors">
+              Force Sign Out
             </button>
           </form>
         </section>

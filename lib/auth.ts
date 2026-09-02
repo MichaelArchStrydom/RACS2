@@ -9,9 +9,9 @@
  *               — contains no user data; all info is fetched from DB on each lookup
  *
  * Remember-me behaviour:
- *   OFF → cookie has no maxAge (expires when browser closes) + DB row expires in 24 h
- *   ON  → cookie has maxAge 30 days + DB row expires in 30 days
- *   The DB expiry is the authoritative source; the cookie maxAge is just a UX hint.
+ *   OFF  cookie has no maxAge (expires when browser closes) + DB row expires in 24 h
+ *   ON   indefinite
+ *  The DB expiry is the authoritative source; the cookie maxAge is just a UX hint.
  */
 
 import { cookies } from 'next/headers'
@@ -23,7 +23,8 @@ import { randomBytes } from 'crypto'
 
 const COOKIE_NAME = 'racs2_session'
 const SHORT_EXPIRY_HOURS = 24          // no remember-me: session lives 24 h
-const LONG_EXPIRY_DAYS = 30          // remember-me:    session lives 30 days
+const INDEFINITE_WINDOW_DAYS = 400
+const INDEFINITE_REFRESH_THRESHOLD_DAYS = 370          // renew with a ~30-day cushion
 const BCRYPT_ROUNDS = 12          // cost factor — increase to 13/14 for higher security
 
 // ─── Password helpers ─────────────────────────────────────────────────────────
@@ -50,10 +51,10 @@ export async function createSession(memberId: string, rememberMe: boolean): Prom
   const token = randomBytes(32).toString('hex')   // 64-char hex string
   const now = new Date()
   const expiresAt = rememberMe
-    ? new Date(now.getTime() + LONG_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    ? new Date(now.getTime() + INDEFINITE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
     : new Date(now.getTime() + SHORT_EXPIRY_HOURS * 60 * 60 * 1000)
 
-  await db.session.create({ data: { token, memberId, expiresAt } })
+  await db.session.create({ data: { token, memberId, expiresAt, rememberMe } })
 
   const jar = await cookies()
   jar.set(COOKIE_NAME, token, {
@@ -62,7 +63,7 @@ export async function createSession(memberId: string, rememberMe: boolean): Prom
     secure: process.env.NODE_ENV === 'production',  // HTTPS only in prod
     path: '/',
     ...(rememberMe
-      ? { maxAge: LONG_EXPIRY_DAYS * 24 * 60 * 60 }  // browser persists the cookie
+      ? { maxAge: INDEFINITE_WINDOW_DAYS * 24 * 60 * 60 }  // browser persists the cookie
       : {}),                                          // no maxAge → session cookie
   })
 }
@@ -100,6 +101,13 @@ export async function getCurrentMember() {
 
   // Deactivated member (admin action)
   if (!session.member.isActive) return null
+
+  if (session.rememberMe) {
+    const refreshThresholdMs = INDEFINITE_REFRESH_THRESHOLD_DAYS * 24 * 60 * 60 * 1000
+    if (session.expiresAt.getTime() - Date.now() < refreshThresholdMs) {
+      await extendSession(true).catch(() => { })
+    }
+  }
 
   return session.member
 }
@@ -163,8 +171,9 @@ export async function revokeAllSessionsForMember(memberId: string): Promise<void
 
 /**
  * Extends the current session's expiry (and cookie maxAge) by the remember-me window.
- * Useful as a "sliding session" if you later want sessions to refresh on activity.
- * Not called automatically — opt-in only.
+ * Called automatically by getCurrentMember() to slide a remember-me session's window
+ * forward on activity — see the module doc comment above. Throws if called somewhere
+ * that can't mutate cookies (a Server Component render); callers should swallow that.
  */
 export async function extendSession(rememberMe: boolean): Promise<void> {
   const jar = await cookies()
@@ -172,16 +181,16 @@ export async function extendSession(rememberMe: boolean): Promise<void> {
   if (!token) return
 
   const expiresAt = rememberMe
-    ? new Date(Date.now() + LONG_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    ? new Date(Date.now() + INDEFINITE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
     : new Date(Date.now() + SHORT_EXPIRY_HOURS * 60 * 60 * 1000)
-
-  await db.session.update({ where: { token }, data: { expiresAt } }).catch(() => { })
 
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    ...(rememberMe ? { maxAge: LONG_EXPIRY_DAYS * 24 * 60 * 60 } : {}),
+    ...(rememberMe ? { maxAge: INDEFINITE_WINDOW_DAYS * 24 * 60 * 60 } : {}),
   })
+
+  await db.session.update({ where: { token }, data: { expiresAt, rememberMe } }).catch(() => { })
 }
