@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { formatInTimeZone } from 'date-fns-tz'
 import { acceptStandInRequest, moderatorCancelStandInRequest } from '@/app/actions/rosterActions'
-import { ALREADY_ACTIONED } from '@/lib/errors'
-import { formatNZTime, normalizeTimeInput, isMoreThanOneDayPast } from '@/lib/timezone'
+import { ALREADY_ACTIONED, UNQUALIFIED } from '@/lib/errors'
+import { formatNZTime, normalizeTimeInput, isMoreThanOneDayPast, NZ_TZ } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange } from '@/lib/shiftTime'
 import Spinner from '@/components/Spinner'
 import { Trash2, Check } from 'lucide-react'
@@ -17,9 +18,10 @@ interface StandInRequestItemProps {
   // request to cancel (full window pre-filled = full cancel).
   cancelMode?: boolean
   isModerator?: boolean
+  highlighted: any
 }
 
-export default function StandInRequestItem({ request, activeUserId, cancelMode = false, isModerator = false }: StandInRequestItemProps) {
+export default function StandInRequestItem({ request, activeUserId, cancelMode = false, isModerator = false, highlighted }: StandInRequestItemProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -71,7 +73,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
           setError(
             err instanceof Error && err.message === ALREADY_ACTIONED
               ? 'Someone else just actioned this request — refreshing…'
-              : 'Something went wrong — please try again.'
+              : 'Something went wrong, try again.'
           )
           router.refresh()
         }
@@ -89,7 +91,10 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
         setError(
           err instanceof Error && err.message === ALREADY_ACTIONED
             ? 'Someone else just actioned this request — refreshing…'
-            : 'Something went wrong — please try again.'
+            : err instanceof Error && err.message === UNQUALIFIED
+              ? 'Qualifications not met'
+              : 'Something went wrong, try again.'
+
         )
         router.refresh()
       }
@@ -99,7 +104,9 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
   const isOwnRequest = activeUserId === request.requestedById
 
   return (
-    <div className="p-4 bg-white flex flex-col md:flex-row md:items-center justify-between gap-1 text-xs border-b last:border-b-0">
+    <div className={`p-4 
+      ${highlighted} md:${highlighted}
+      flex flex-col md:flex-row md:items-center justify-between gap-1 text-xs border-b last:border-b-0`}>
       <div>
         <div className="flex items-center gap-2">
           <span className="font-bold text-slate-800 text-sm">
@@ -111,7 +118,7 @@ export default function StandInRequestItem({ request, activeUserId, cancelMode =
         </div>
         <div className="flex items-center gap-2">
           <p className="text-slate-500 mt-1">
-            {new Date(request.slot.date).toLocaleDateString("en-NZ", { weekday: 'short', day: 'numeric', month: 'short' })}
+            {formatInTimeZone(new Date(request.slot.date), NZ_TZ, 'EEE, d MMM')}
           </p>
           <p className="text-slate-400 font-mono text-[10px] mt-0.5">
             {defaultStart} – {defaultEnd}

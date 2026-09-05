@@ -22,6 +22,11 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
   if (!adminMember?.isAdmin) redirect('/')
 
   const appliances = await db.appliance.findMany({ orderBy: { displayOrder: 'asc' } })
+  const allQuals = (await db.qualification.findMany({
+    where: { isActive: true },
+    orderBy: { key: 'asc' },
+    select: { key: true },
+  })).map((q) => q.key)
 
   const defaultSeats: { seats: string; seatsAbbr: string }[] = [
     { seats: "OIC", seatsAbbr: "OIC" },
@@ -58,12 +63,13 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
             try {
               const labels = fd.getAll('seatLabels') as string[]
               const abbrs = fd.getAll('seatAbbr') as string[]
+              const quals = fd.getAll('seatQuals') as string[]
               await addAppliance(fd.get('adminId') as string, {
                 name: fd.get('name') as string,
                 displayOrder: Number(fd.get('displayOrder')),
                 seatCount: labels.length,
                 minimumCrew: Number(fd.get('minimumCrew')),
-                seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
+                seats: labels.map((label, i) => ({ label, abbr: abbrs[i], requiredQualKeys: quals[i] ? JSON.parse(quals[i]) : [] })),
                 weekdayShiftStart: fd.get('weekdayShiftStart') as string,
                 weekdayShiftEnd: fd.get('weekdayShiftEnd') as string,
                 weekendShiftStart: fd.get('weekendShiftStart') as string,
@@ -93,7 +99,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
           </div>
           {/*Seat Manager*/}
           <div className="flex flex-col gap-1 col-span-2">
-            <SeatManager initialSeats={defaultSeats} />
+            <SeatManager initialSeats={defaultSeats} allQuals={allQuals} />
           </div>
           <div className="col-span-2 grid grid-cols-2 gap-3 pt-2 border-t">
             <p className="text-xs font-semibold text-slate-500 col-span-2">
@@ -136,6 +142,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                 try {
                   const labels = fd.getAll('seatLabels') as string[]
                   const abbrs = fd.getAll('seatAbbr') as string[]
+                  const quals = fd.getAll('seatQuals') as string[]
                   await updateAppliance(fd.get('adminId') as string, fd.get('applianceId') as string, {
                     name: fd.get('name') as string,
                     displayOrder: Number(fd.get('displayOrder')),
@@ -143,7 +150,7 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                     minimumCrew: Number(fd.get('minimumCrew')),
                     isActive: fd.get('isActive') === 'on',
                     notes: fd.get('notes') as string || undefined,
-                    seats: labels.map((label, i) => ({ label, abbr: abbrs[i] })),
+                    seats: labels.map((label, i) => ({ label, abbr: abbrs[i], requiredQualKeys: quals[i] ? JSON.parse(quals[i]) : [] })),
                     weekdayShiftStart: fd.get('weekdayShiftStart') as string,
                     weekdayShiftEnd: fd.get('weekdayShiftEnd') as string,
                     weekendShiftStart: fd.get('weekendShiftStart') as string,
@@ -176,10 +183,12 @@ export default async function AppliancesPage({ searchParams }: PageProps) {
                 </div>
                 <div className="py-5 flex flex-col gap-1 col-span-2 md:col-span-4">
                   <SeatManager
-                    initialSeats={(a.seats as { label: string; abbr: string }[]).map((s) => ({
+                    initialSeats={(a.seats as { label: string; abbr: string; requiredQualKeys?: string[] }[]).map((s) => ({
                       seats: s.label,
                       seatsAbbr: s.abbr,
+                      quals: s.requiredQualKeys ?? [],
                     }))}
+                    allQuals={allQuals}
                   />
                 </div>
                 <div className="col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t">

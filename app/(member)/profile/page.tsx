@@ -13,7 +13,16 @@ export default async function ProfilePage() {
   const sessionMember = await requireMember()
 
   const [member, recentLedger] = await Promise.all([
-    db.member.findUnique({ where: { id: sessionMember.id } }),
+    db.member.findUnique({
+      where: { id: sessionMember.id },
+      include: {
+        qualifications: {
+          where: { isActive: true },
+          include: { qualification: true },
+          orderBy: { qualification: { name: 'asc' } },
+        },
+      },
+    }),
     db.hourLedgerEntry.findMany({
       where: { memberId: sessionMember.id },
       orderBy: { recordedAt: 'desc' },
@@ -49,6 +58,31 @@ export default async function ProfilePage() {
           </div>
         </div>
         <p className="text-[11px] text-slate-400 italic">Can only be changed by an admin.</p>
+      </section>
+
+      <section className="bg-white rounded-xl border shadow-sm p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-slate-700">Qualifications</h2>
+        {member.qualifications.length === 0 ? (
+          <p className="text-sm text-slate-400">No qualifications on record.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-2">
+            {member.qualifications.map((mq) => {
+              const isExpired = mq.expiresAt ? new Date(mq.expiresAt) < new Date() : false
+              return (
+                <li
+                  key={mq.id}
+                  title={mq.qualification.description ?? undefined}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${isExpired ? 'bg-slate-50 text-slate-400 border-slate-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}
+                >
+                  {mq.qualification.name}
+                  {isExpired && ' (expired)'}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <p className="text-[11px] text-slate-400 italic">Managed by an admin</p>
       </section>
 
       {/* Editable contact details */}

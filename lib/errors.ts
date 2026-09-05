@@ -2,3 +2,4 @@
 // caller lost the race. Callers should catch this specifically (by message)
 // and show a "someone beat you to it" message rather than a generic error.
 export const ALREADY_ACTIONED = 'ALREADY_ACTIONED'
+export const UNQUALIFIED = 'UNQUALIFIED'

@@ -1,10 +1,12 @@
 'use client'
 
 import { Fragment, useEffect } from 'react'
+import { formatInTimeZone } from 'date-fns-tz'
 import RosterCell from './RosterCell'
 import EditableRosterCell from './EditableRosterCell'
 import { useRosterInteraction, cellKeyStr, type DraftAssignment } from './RosterInteractionContext'
 import { getShiftTimesForDate, type ApplianceShiftHours } from '@/lib/shiftHours'
+import { NZ_TZ } from '@/lib/timezone'
 
 interface ApplianceForGrid extends ApplianceShiftHours {
   name: string
@@ -27,8 +29,8 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
   // Admins can already change seat count on appliances but renders on main roster as the standard 5 no matter what.
 
   const days = visibleDates.map((date) => {
-    const dateKey = date.toLocaleDateString("en-CA", { timeZone: 'Pacific/Auckland' });
-    const dayStr = date.toLocaleDateString("en-NZ", { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short' });
+    const dateKey = formatInTimeZone(date, NZ_TZ, 'yyyy-MM-dd');
+    const dayStr = formatInTimeZone(date, NZ_TZ, 'EEE, d MMM');
     const [y, m, d] = dateKey.split('-').map(Number);
     const isWeekend = [0, 6].includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay());
     return { date, dateKey, dayStr, isWeekend };
@@ -160,6 +162,20 @@ export default function RosterGrid({ groupedData, visibleDates, activeUserId, ap
             </Fragment>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="bg-slate-100/80 border-y border-slate-200">
+            <td colSpan={visibleDaysCount} className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 align-middle">
+            </td>
+          </tr>
+          <tr className="bg-slate-50 border-slate-200 text-[11px] font-semibold text-slate-500">
+            <th className="p-3 text-left border-r whitespace-nowrap"></th>
+            {days.map(({ dateKey, dayStr, isWeekend }) => (
+              <th key={dateKey} className={`text-center border-r font-medium whitespace-nowrap ${isWeekend ? 'bg-slate-100/50' : ''}`}>
+                {dayStr}
+              </th>
+            ))}
+          </tr>
+        </tfoot>
       </table>
     </div>
   );

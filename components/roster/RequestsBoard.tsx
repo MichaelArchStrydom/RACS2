@@ -96,6 +96,8 @@ export default function RequestsBoard({
   const filteredRequests = requests.filter(req => showCovered || req.status === 'PENDING')
   const pendingCount = requests.filter(r => r.status === 'PENDING').length
 
+  const [highlightedRequestItem, setHighlightedRequestItem] = useState(`bg-white`)
+  const [highlightedRequestItemId, setHighlightedRequestItemId] = useState<string | null>(null)
   // The shift pool the create form draws from: your own shifts normally, or
   // the chosen member's shifts in on-behalf mode.
   const shiftPool = onBehalfMode
@@ -150,6 +152,7 @@ export default function RequestsBoard({
     setClaimSeatInfo(null)
     setClaimPreviewRange(null)
     setClaimError(null)
+    setHighlightedRequestItem(`bg-white`)
   }
 
   const resolveAndPrefill = (shift: UserShift, overrideRange?: { start: Date; end: Date }) => {
@@ -249,6 +252,12 @@ export default function RequestsBoard({
     clearPendingScroll()
   }, [pendingScrollRequestId, clearPendingScroll])
 
+  useEffect(() => {
+    if (!pendingScrollRequestId) return
+    setHighlightedRequestItem(`bg-amber-100`)
+    setHighlightedRequestItemId(pendingScrollRequestId)
+  }, [pendingScrollRequestId])
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -294,8 +303,13 @@ export default function RequestsBoard({
 
     startClaimTransition(async () => {
       try {
-        await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole, claimSeatInfo.rangeStartStr, claimSeatInfo.rangeEndStr)
-        resetCreateState()
+        const result = await claimUnassignedShift(claimSeatInfo.dateStr, claimSeatInfo.applianceName, claimSeatInfo.applianceRole, claimSeatInfo.rangeStartStr, claimSeatInfo.rangeEndStr)
+        if (result.success) {
+          resetCreateState()
+        } else {
+          setClaimError(result.error)
+          router.refresh()
+        }
       } catch (err) {
         setClaimError(err instanceof Error ? err.message : 'Something went wrong claiming this shift — please try again.')
         router.refresh()
@@ -664,6 +678,7 @@ export default function RequestsBoard({
                   activeUserId={activeUserId}
                   cancelMode={cancelMode}
                   isModerator={isModerator}
+                  highlighted={highlightedRequestItemId === request.id ? highlightedRequestItem : ''}
                 />
               </div>
             ))}

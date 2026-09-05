@@ -5,12 +5,13 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { isMoreThanOneDayPast, formatNZTime, nzMidnightUTC } from '@/lib/timezone'
 import { parseTimeRangeOnDay, isWithinRange, TIME_RANGE_INVALID_MESSAGE } from '@/lib/shiftTime'
-import { ALREADY_ACTIONED } from '@/lib/errors'
+import { ALREADY_ACTIONED, UNQUALIFIED } from '@/lib/errors'
 import { getCurrentMember } from '@/lib/auth'
 import { sendPushToMember, sendPushToMembers } from '@/lib/push'
 import { getShiftTimesForDate, isWeekendDate } from '@/lib/roster-engine'
 import { snapToHalfHour } from '@/lib/timeSnap'
 import { SHIFT_HISTORY_STATUS } from '@/lib/shiftHistory'
+import { assertMemberMeetsSeatRequirements } from '@/lib/qualifications'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -252,9 +253,10 @@ export async function claimUnassignedShift(
   rangeStartStr?: string,
   rangeEndStr?: string,
   message?: string
-) {
+): Promise<{ success: true } | { success: false; error: string }> {
   const caller = await getCurrentMember()
-  if (!caller) throw new Error('Not signed in')
+  if (!caller) return { success: false, error: 'Not signed in' }
+  const isMod = caller.isAdmin || caller.isModerator
 
   const existingSlot = await db.shiftSlot.findFirst({
     where: { date: nzMidnightUTC(dateStr), appliance: applianceName, status: 'LIVE' },
@@ -264,7 +266,16 @@ export async function claimUnassignedShift(
     : null
   if (!roleAlreadyAssigned) {
     const appliance = await db.appliance.findUnique({ where: { name: applianceName } })
-    if (!appliance?.allowSelfClaim) throw new Error('Self-claiming shifts is not enabled for this appliance.')
+    if (!appliance?.allowSelfClaim) return { success: false, error: 'Self-claiming shifts is not enabled for this appliance.' }
+  }
+
+  // so admins and mods can still claim seats they are unqualified for
+  if (!isMod) {
+    try {
+      await assertMemberMeetsSeatRequirements(caller.id, applianceName, applianceRole)
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Qualifications not met for this seat' }
+    }
   }
 
   const slot = await findOrCreateSlot(dateStr, applianceName)
@@ -303,6 +314,7 @@ export async function claimUnassignedShift(
     })
   })
   revalidatePath('/')
+  return { success: true }
 }
 
 export async function saveEditedTimeline(
@@ -569,6 +581,29 @@ export async function acceptStandInRequest(
   const requesterHistoricalFields = await resolveHistoricalFields(request.requestedById)
 
   const isSelfReclaim = coveringMemberId === request.requestedById
+
+  if (!isMod && !isSelfReclaim) {
+    const intersecting = await db.shiftAssignment.findMany({
+      where: {
+        slotId: request.slotId,
+        OR: [
+          { memberId: request.requestedById },
+          { actualMemberId: request.requestedById },
+        ],
+        startTime: { lt: coverEnd },
+        endTime: { gt: coverStart },
+      },
+      select: { applianceRole: true },
+    })
+    const roles = [...new Set(intersecting.map((a) => a.applianceRole))]
+    for (const role of roles) {
+      try {
+        await assertMemberMeetsSeatRequirements(coveringMemberId, request.slot.appliance, role)
+      } catch {
+        throw new Error(UNQUALIFIED)
+      }
+    }
+  }
 
   const originalMessageRow = await db.shiftHistory.findFirst({
     where: { relatedRequestId: requestId, message: { not: null } },
