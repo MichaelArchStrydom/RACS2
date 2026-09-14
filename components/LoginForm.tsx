@@ -20,14 +20,18 @@ export default function LoginForm() {
 
         {/* Header */}
         <div className="text-center space-y-1">
-          <div className="text-4xl mb-3"></div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">RACS2</h1>
-          <p className="text-sm text-slate-500">Station Roster System</p>
+          <div className="text-center space-y-1 flex justify-center">
+            <img
+              src="/apple-touch-icon.png"
+              className="rounded-full w-80 h-80"
+            />
+          </div>
+          <div className="p-2"> </div>
         </div>
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border p-8 space-y-5">
-          <h2 className="text-base font-semibold text-slate-700">Sign in to your account</h2>
+          <h2 className="text-base font-semibold text-slate-700">Sign in to your RACS2 account</h2>
 
           {/* Error banner — only shown when the action returns an error */}
           {state?.error && (
@@ -116,8 +120,7 @@ export default function LoginForm() {
 
         {/* Footer hint */}
         <p className="text-center text-xs text-slate-400">
-          Default password is <span className="font-mono font-semibold">changeme123</span>
-          {' '}— contact admin if you need a reset.
+          Contact admin if you need to change your password.
         </p>
 
       </div>

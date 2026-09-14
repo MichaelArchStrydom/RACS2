@@ -1,6 +1,10 @@
 # RACS2 — Roster & Cover System
 A roster and shift-management system built for the Silverdale volunteer fire brigade with crew rotation scheduling, cover/stand-in requests, hour-balance tracking, and push notifications. This web-app is currently in use by real first responders, helping them co-ordinate and communicate using a feature rich, modern platform designed just for them.
 
+![Roster Grid Screenshot](docs/screenshotofroster.png)
+
+(Names replaced with dashes for privacy)
+
 ## What it does
 
 - **Crew rotation**: a crew based rotation cycle assigns crews to trucks day by day. Admins can reorder crews using an intuitive order picker rather than editing opaque backend numbers directly.
@@ -22,8 +26,6 @@ A roster and shift-management system built for the Silverdale volunteer fire bri
 - **Vercel** for hosting, with Vercel Cron for the scheduled notification sweep
 
 
-![Roster Grid Screenshot](docs/screenshotofroster.png)
 
-(Names replaced with dashes for privacy)
 
 

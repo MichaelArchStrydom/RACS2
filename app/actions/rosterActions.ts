@@ -12,6 +12,7 @@ import { getShiftTimesForDate, isWeekendDate } from '@/lib/roster-engine'
 import { snapToHalfHour } from '@/lib/timeSnap'
 import { SHIFT_HISTORY_STATUS } from '@/lib/shiftHistory'
 import { assertMemberMeetsSeatRequirements } from '@/lib/qualifications'
+import { NEW_COVER_REQUEST_NOTIFICATION, USER_COVER_ACCEPTED } from '@/lib/notifications'
 
 export async function createStandInRequest(
   assignmentId: string,
@@ -112,9 +113,9 @@ export async function createStandInRequest(
       select: { id: true },
     })
     await sendPushToMembers(recipients.map((m) => m.id), {
-      title: 'New cover request',
-      body: `${dateStr} · ${assignment.slot.appliance} · ${formatNZTime(start)}–${formatNZTime(end)}`,
-      url: '/',
+      title: NEW_COVER_REQUEST_NOTIFICATION.title,
+      body: `${dateStr} · ${assignment.slot.appliance} · ${formatNZTime(start)}–${formatNZTime(end)}` + NEW_COVER_REQUEST_NOTIFICATION.body,
+      url: NEW_COVER_REQUEST_NOTIFICATION.url,
     })
   })
 
@@ -887,9 +888,9 @@ export async function acceptStandInRequest(
         timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short',
       })
       await sendPushToMember(request.requestedById, {
-        title: 'Your cover request was picked up',
+        title: USER_COVER_ACCEPTED.title,
         body: `${coveringMember?.firstName ?? 'Someone nice'} ${coveringMember?.lastName ?? ''} covered your ${dateStr} shift.`,
-        url: '/',
+        url: USER_COVER_ACCEPTED.url,
       })
     })
   }

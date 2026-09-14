@@ -1,4 +1,5 @@
 import { db } from './db'
+import { COVER_NEEDED_NOTIFICATION, USER_NO_COVER_NOTIFICATION_1H, USER_NO_COVER_NOTIFICATION_24H } from './notifications'
 import { sendPushToMember, sendPushToMembers } from './push'
 
 const HOUR = 60 * 60 * 1000
@@ -38,9 +39,9 @@ export async function runNotificationSweep() {
       select: { id: true },
     })
     await sendPushToMembers(recipients.map((m) => m.id), {
-      title: 'Cover still needed soon',
-      body: `${request.slot.appliance} on ${formatSlotDate(request.slot.date)} still needs cover — the shift is coming up.`,
-      url: '/',
+      title: COVER_NEEDED_NOTIFICATION.title,
+      body: `${request.slot.appliance} on ${formatSlotDate(request.slot.date)} ` + COVER_NEEDED_NOTIFICATION.body,
+      url: COVER_NEEDED_NOTIFICATION.url,
     })
   }
 
@@ -64,9 +65,9 @@ export async function runNotificationSweep() {
 
     if (request.requestedBy.notifyMyRequestUpdates) {
       await sendPushToMember(request.requestedById, {
-        title: 'Still no cover for your shift',
-        body: `Your ${formatSlotDate(request.slot.date)} ${request.slot.appliance} shift starts within 24 hours and still has no cover.`,
-        url: '/',
+        title: USER_NO_COVER_NOTIFICATION_24H.title,
+        body: `Your ${formatSlotDate(request.slot.date)} ${request.slot.appliance}` + USER_NO_COVER_NOTIFICATION_24H.body,
+        url: USER_NO_COVER_NOTIFICATION_24H.url,
       })
     }
   }
@@ -90,9 +91,9 @@ export async function runNotificationSweep() {
 
     if (request.requestedBy.notifyMyRequestUpdates) {
       await sendPushToMember(request.requestedById, {
-        title: 'Shift starts in an hour — still uncovered',
-        body: `Your ${formatSlotDate(request.slot.date)} ${request.slot.appliance} shift starts in about an hour and still has no cover.`,
-        url: '/',
+        title: USER_NO_COVER_NOTIFICATION_1H.title,
+        body: `Your ${formatSlotDate(request.slot.date)} ${request.slot.appliance}` + USER_NO_COVER_NOTIFICATION_1H.body,
+        url: USER_NO_COVER_NOTIFICATION_1H.url,
       })
     }
   }

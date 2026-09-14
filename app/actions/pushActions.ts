@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getCurrentMember } from '@/lib/auth'
 import { sendPushToMember, sendPushToMembers } from '@/lib/push'
 import { revalidatePath } from 'next/cache'
+import { ADMIN_TEST_BROADCAST_NOTIFICATION, USER_TEST_BROADCAST_NOTIFICATION } from '@/lib/notifications'
 
 interface SubscriptionJSON {
   endpoint: string
@@ -61,9 +62,9 @@ export async function sendTestPushToSelf() {
   if (!caller) throw new Error('Not signed in')
 
   await sendPushToMember(caller.id, {
-    title: 'RACS2 test notification',
-    body: `Hi ${caller.firstName} — if you can see this, push notifications are working on this device.`,
-    url: '/profile',
+    title: USER_TEST_BROADCAST_NOTIFICATION.title,
+    body: USER_TEST_BROADCAST_NOTIFICATION.body + `${caller.firstName}`,
+    url: USER_TEST_BROADCAST_NOTIFICATION.url,
   })
 }
 
@@ -81,9 +82,9 @@ export async function sendTestPushToAllMembers(adminId: string) {
   const memberIds = [...new Set(subscriptions.map((s) => s.memberId))]
 
   await sendPushToMembers(memberIds, {
-    title: 'RACS2 test broadcast',
-    body: `Sent by ${admin.firstName} ${admin.lastName} notifications working.`,
-    url: '/',
+    title: ADMIN_TEST_BROADCAST_NOTIFICATION.title,
+    body: ADMIN_TEST_BROADCAST_NOTIFICATION.body + `${admin.firstName} ${admin.lastName}`,
+    url: ADMIN_TEST_BROADCAST_NOTIFICATION.url,
   })
 
   return memberIds.length
